@@ -40,7 +40,10 @@ O migrador utiliza transação PostgreSQL e lock consultivo, registra as versõe
 Variáveis exigidas pelas APIs:
 - `BI_CONNECT_ENABLED=true` **apenas em Preview depois que DB estiver pronta**.
 - `DATABASE_URL` conectada à base Preview/teste.
+- `DATABASE_SSL_CA` pode conter a CA pública do servidor quando necessária. O driver sempre valida o certificado TLS; não desabilitar essa verificação.
 - Credenciais de identidade já utilizadas no Vercel: `ST1_AUTH_SECRET`, `ST1_BLOB_STORE_ID`, `BLOB_READ_WRITE_TOKEN`. Não replicar credenciais no navegador nem adicioná-las ao GitHub.
+
+Atualização de 21/10/2026: o banco dedicado está criado e a migração do índice e do RLS foi aplicada. A role `st1_connect_preview` possui privilégios mínimos e políticas nas seis tabelas, sem DELETE, DDL ou bypass de RLS. Permanece NOLOGIN até a configuração da credencial. A flag foi salva como `false` somente na Preview da branch BI. Os testes transacionais da role passaram; ainda falta a conexão TCP pelo driver e o fluxo real entre contas.
 
 No painel, entre como Administrador. Abra **Squad de BI → Acessos do Squad** e autorize explicitamente as contas do BI (inclusive a própria conta Admin se fará parte da fila). Somente pessoas com login ativo e papel operacional podem ser autorizadas.
 

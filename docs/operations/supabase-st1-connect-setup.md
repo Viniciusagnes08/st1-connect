@@ -6,7 +6,7 @@
 
 A organização conectada continua no **plano Free**. O projeto **ST1 Connect** foi criado como segundo projeto ativo gratuito. O **ST1 Academy** continua ativo e o projeto genérico inativo permanece preservado; nenhum dos dois foi utilizado pelo Connect. O limite do Free Plan é de dois projetos ativos.
 
-A criação foi autorizada pelo usuário somente com custo zero. O Supabase retornou a cotação `{type:'project',recurrence:'monthly',amount:0}` antes da criação. A primeira leitura verificou seis tabelas vazias em `st1_bi` e nenhuma tabela operacional em `public`. A consulta de segurança confirmou `anon_schema_access=false`, `authenticated_schema_access=false` e nenhum GRANT direto a esses papéis. **A listagem de tabelas sinalizou RLS desativado nas seis tabelas; por exigência de segurança, não habilitar RLS automaticamente sem decisão de políticas e testes com a role de aplicação.** Os advisors de segurança retornaram sem lints; performance indicou um índice de FK ainda pendente (`submission_keys.request_id`).
+A criação foi autorizada pelo usuário somente com custo zero. O Supabase retornou a cotação `{type:'project',recurrence:'monthly',amount:0}` antes da criação. A primeira leitura verificou seis tabelas vazias em `st1_bi` e nenhuma tabela operacional em `public`. A consulta de segurança confirmou `anon_schema_access=false`, `authenticated_schema_access=false` e nenhum GRANT direto a esses papéis. Em 21/10/2026, o índice da FK foi criado e o RLS foi habilitado após definir e testar a role exclusiva do backend. Os advisors de segurança retornaram sem lints.
 
 Fontes oficiais:
 - https://supabase.com/docs/guides/platform/billing-on-supabase
@@ -36,6 +36,9 @@ O `st1_bi` não pertence aos schemas expostos na Data API do Supabase e tem `USA
 - **API serverless Vercel:** **Transaction pooler** Supabase (Supavisor), porta 6543, `prepare:false` no driver `postgres`. O pooler é adequado a funções curtas e pode ser alcançado via IPv4.
 - **Preferível em produção:** um papel SQL exclusivo de execução do Connect com `USAGE` apenas no schema e `SELECT, INSERT, UPDATE` somente nas tabelas da aplicação e `USAGE` nas sequências necessárias. Credenciais desse papel não devem ser as do administrador do banco.
 - `DATABASE_URL` é uma variável **server-side** exclusiva do Vercel, não um endereço público. Testar conexão TLS e `SELECT 1` depois de configurar.
+- O driver valida o certificado com `rejectUnauthorized:true`. Se necessário, fornecer a CA pública via `DATABASE_SSL_CA`; não usar `ssl:'require'`, que no Postgres.js utilizado desativa a validação do certificado.
+
+A role `st1_connect_preview` já está criada, sem login nem senha. Possui os privilégios de tabela e sequência necessários à API, sem DELETE, DDL ou BYPASSRLS. As seis tabelas têm RLS ativo e políticas restritas a essa role. O backend autentica e autoriza cada usuário antes das consultas. Essa proteção foi testada em transação, com rollback de todos os registros sintéticos. O login da role só deve ser habilitado ao configurar a conexão privada.
 
 Esquema de permissão esperado, a aplicar com nome real da role criada e aprovada:
 
@@ -73,8 +76,9 @@ O Supabase Free pode pausar projetos com baixa atividade. Por isso o Free é con
 - **Tabelas:** `request_records`, `bi_memberships`, `bi_tickets`, `request_events`, `submission_keys`, `audit_log`
 - **Linhas iniciais:** 0 registros em solicitações, tickets e membros.
 - **Migração registrada no Supabase:** `20261021023801_st1_connect_bi_foundation_private_schema`
-- **Revisão RLS pendente:** todas as tabelas estão em schema não exposto e sem acesso de `anon`/`authenticated`. A habilitação de RLS como defesa adicional requer escolher a estratégia de acesso do papel SQL e validar políticas; não habilitar indiscriminadamente.
-- **Próximo passo:** obter uma credencial Postgres para o projeto no painel Supabase, restringir ao backend, configurar a `DATABASE_URL` no Vercel Preview e testar `GET /api/health` com a flag `BI_CONNECT_ENABLED`. Preferir uma role SQL com privilégios mínimos a usar `postgres` no runtime.
+- **RLS e role preparados:** migração `20261021035541_restrict_bi_backend_role`; as seis tabelas possuem políticas para `st1_connect_preview`. Escrita/leitura/atualização e bloqueio de DELETE, DDL e leitura de auditoria foram testados; `anon`/`authenticated` continuam sem USAGE.
+- **Preview preparada:** `BI_CONNECT_ENABLED=false` foi criada e relida somente na branch `feature/st1-connect-bi-foundation`.
+- **Próximo passo:** obter o endpoint real do pooler atribuído ao projeto no painel autenticado, criar a credencial da role restrita e configurar a `DATABASE_URL` privada na Vercel Preview. Testar o driver antes de habilitar a flag. Não inferir o host do pooler apenas pela região.
 - **Não reproduzir segredo em chat, documentação ou código.** Configurar a string diretamente na área protegida de variáveis do Vercel.
 
 ### Observação sobre migrações

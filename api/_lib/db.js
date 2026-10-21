@@ -8,16 +8,23 @@ export function requireDatabaseUrl(env = process.env) {
   return url;
 }
 
+export function databaseOptions(env = process.env) {
+  return {
+    max: 3,
+    connect_timeout: 6,
+    idle_timeout: 20,
+    ssl: {
+      rejectUnauthorized: true,
+      ...(env.DATABASE_SSL_CA ? { ca: env.DATABASE_SSL_CA } : {}),
+    },
+    prepare: false,
+  };
+}
+
 async function client() {
   if (!clientPromise) {
     clientPromise = import('postgres').then(({ default: postgres }) =>
-      postgres(requireDatabaseUrl(), {
-        max: 3,
-        connect_timeout: 6,
-        idle_timeout: 20,
-        ssl: 'require',
-        prepare: false,
-      })
+      postgres(requireDatabaseUrl(), databaseOptions())
     ).catch(error => { clientPromise = undefined; throw error; });
   }
   return clientPromise;
