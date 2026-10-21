@@ -2,9 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/outfit';
-import App from './App';
+import AuthGate from './AuthGate';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><App /></React.StrictMode>,
+  <React.StrictMode><AuthGate /></React.StrictMode>,
 );
