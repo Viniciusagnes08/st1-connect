@@ -43,8 +43,15 @@ Esquema de permissão esperado, a aplicar com nome real da role criada e aprovad
 -- Apenas referência: nome da role deve existir e senha deve ser configurada
 -- fora do repositório. Não execute se a role não tiver sido criada.
 GRANT USAGE ON SCHEMA st1_bi TO st1_bi_api;
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA st1_bi TO st1_bi_api;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA st1_bi TO st1_bi_api;
+GRANT SELECT ON st1_bi.request_records, st1_bi.bi_memberships,
+  st1_bi.bi_tickets, st1_bi.request_events, st1_bi.submission_keys TO st1_bi_api;
+GRANT INSERT ON st1_bi.request_records, st1_bi.bi_tickets,
+  st1_bi.request_events, st1_bi.submission_keys,
+  st1_bi.bi_memberships, st1_bi.audit_log TO st1_bi_api;
+GRANT UPDATE ON st1_bi.request_records, st1_bi.bi_tickets,
+  st1_bi.bi_memberships TO st1_bi_api;
+GRANT USAGE, SELECT ON st1_bi.request_protocol_seq,
+  st1_bi.audit_log_id_seq TO st1_bi_api;
 ```
 
 ## Conexão Vercel Preview e homologação
