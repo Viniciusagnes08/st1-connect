@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       if (user.role!=='Administrador')
         return res.status(403).json({error:'Apenas o administrador pode consultar membros do Squad.'});
       const accounts=publicDirectory(await loadDirectory());
-      const rows=await db.query('SELECT user_id,bi_role,active FROM bi_memberships');
+      const rows=await db.query('SELECT user_id,bi_role,active FROM st1_bi.bi_memberships');
       const byId=new Map(rows.rows.map(x=>[x.user_id,x]));
       return res.status(200).json({users:accounts.map(person=>({
         ...person,
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         return res.status(400).json({error:'Altere o perfil para Técnico, Supervisor ou Administrador antes de autorizar no BI.'});
       const result=await inTransaction(async tx=>{
         const assigned=await tx.query(
-          `INSERT INTO bi_memberships(user_id,bi_role,active,granted_by)
+          `INSERT INTO st1_bi.bi_memberships(user_id,bi_role,active,granted_by)
            VALUES($1,$2,$3,$4)
            ON CONFLICT(user_id) DO UPDATE
            SET bi_role=EXCLUDED.bi_role,active=EXCLUDED.active,
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
           [body.userId,body.biRole,body.active,user.id]
         );
         await tx.query(
-          `INSERT INTO audit_log(actor_user_id,action,target_id,metadata)
+          `INSERT INTO st1_bi.audit_log(actor_user_id,action,target_id,metadata)
            VALUES($1,'bi_membership_set',$2,$3::jsonb)`,
           [user.id,body.userId,JSON.stringify({biRole:body.biRole,active:body.active})]
         );
