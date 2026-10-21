@@ -259,7 +259,7 @@ São oito formulários de BI **e um auxiliar de triagem**. O auxiliar não gera 
 
 **Files:** Create `api/forms/catalog.js`, `api/forms/detail.js`, `api/forms/admin.js`, `api/_lib/forms-store.test.js`.
 
-- [ ] **Step 1: teste de publicação imutável.** Criar no banco de teste um draft versão 1, publicar, editar; assert de versão 2 criada sem alterar o JSON da versão 1, e tentativa de atualização de versão publicada recusada. Testar que Técnico/Solicitante recebem 403 em endpoints administrativos.
+- [ ] **Step 1: teste de publicação imutável.** Criar no banco de teste um draft versão 1, publicar, editar; assert de versão 2 criada sem alterar o JSON da versão 1, e tentativa de atualização de versão publicada recusada. Testar que Técnico/Solicitante e Administrador sem membership BI recebem 403 em endpoints administrativos.
 - [ ] **Step 2: implementar leitura autenticada.**
 
 ~~~js
@@ -282,7 +282,7 @@ export default async function handler(req, res) {
 
 `api/forms/detail.js` recebe slug no parâmetro validado `/^[a-z0-9-]{3,80}$/` e consulta `form_templates` JOIN `form_versions` pelo `published_version_id`. Nunca retorna versões internas não publicadas para Solicitante.
 
-- [ ] **Step 3: editor restrito e publicação transacional.** Em `api/forms/admin.js` aceitar POST `{action:'create',title,slug,scope,schema}`, `{action:'revise',templateId,schema}`, `{action:'publish',templateId,versionId}` e `{action:'archive',templateId}`. Validar `currentPrincipal.role==='Administrador'`, `validWriteOrigin` e `validateSchema`; usar ``inTransaction` e SQL parametrizado. Para `publish` consultar versão e confirmar `version.template_id===templateId` antes de atualizar `published_version_id` e `state`; registrar `audit_log`.
+- [ ] **Step 3: editor restrito e publicação transacional.** Em `api/forms/admin.js` aceitar POST `{action:'create',title,slug,scope,schema}`, `{action:'revise',templateId,schema}`, `{action:'publish',templateId,versionId}` e `{action:'archive',templateId}`. Validar `currentPrincipal.role==='Administrador'` **e membership BI ativo** pelo servidor, `validWriteOrigin` e `validateSchema`; usar ``inTransaction` e SQL parametrizado. Para `publish` consultar versão e confirmar `version.template_id===templateId` antes de atualizar `published_version_id` e `state`; registrar `audit_log`.
 - [ ] **Step 4: resultado dos testes.** Sem login → 401; sem papel → 403; template arquivado → 404 no catálogo; nova versão publicada não altera antiga. Commit: `feat(api): protect form lifecycle`.
 
 ## Task 5: Submissão atômica da resposta com solicitação BI ou revisão
