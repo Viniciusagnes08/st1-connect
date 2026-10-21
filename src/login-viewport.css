@@ -46,7 +46,13 @@
 .auth-hero-content > p { line-height: 1.65; }
 .auth-hero-feature { margin-top: clamp(22px, 5dvh, 56px); }
 .auth-hero-bottom { margin-top: 0; }
-.auth-orbit { pointer-events: none; }
+/* O efeito decorativo não deve criar scroll apenas por sair da dobra. */
+.auth-orbit {
+  width: min(620px, 70dvh);
+  height: min(620px, 70dvh);
+  top: 29%;
+  pointer-events: none;
+}
 
 .auth-main {
   justify-content: flex-start;
