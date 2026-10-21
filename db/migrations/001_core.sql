@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS bi_tickets (
   request_id uuid PRIMARY KEY REFERENCES request_records(id) ON DELETE RESTRICT,
   state text NOT NULL DEFAULT 'Novo'
     CHECK (state IN ('Novo', 'Em atendimento', 'Pendente', 'Resolvido', 'Fechado')),
-  priority text NOT NULL DEFAULT 'Média'
+  priority text
     CHECK (priority IN ('Crítica', 'Alta', 'Média', 'Baixa')),
   assignee_user_id text,
   due_at timestamptz,
