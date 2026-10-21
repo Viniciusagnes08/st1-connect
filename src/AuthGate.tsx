@@ -28,6 +28,11 @@ export default function AuthGate() {
   const [configured, setConfigured] = useState(true);
   const [user, setUser] = useState<Account | null>(null);
   const [error, setError] = useState('');
+  const [inviteToken, setInviteToken] = useState(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#/activate?')) return '';
+    return new URLSearchParams(hash.split('?')[1] || '').get('token') || '';
+  });
   useEffect(() => {
     request('status').then(data => { setConfigured(data.configured); setUser(data.user); }).catch(e => setError(e.message)).finally(() => setLoading(false));
   }, []);
@@ -37,10 +42,13 @@ export default function AuthGate() {
   };
   if (loading) return <div className="auth-loading"><span className="auth-spinner" />Preparando acesso seguro...</div>;
   if (user) return <App user={user} onLogout={exit} />;
-  return <LoginScreen setup={!configured} error={error} onLogin={u => { setUser(u); setError(''); }} />;
+  return <LoginScreen setup={!configured && !inviteToken} inviteToken={inviteToken} error={error} onLogin={u => {
+    if (inviteToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/overview');
+    setInviteToken(''); setUser(u); setError('');
+  }} />;
 }
 
-function LoginScreen({ setup, error: initialError, onLogin }: { setup: boolean; error: string; onLogin: (user: Account) => void }) {
+function LoginScreen({ setup, inviteToken, error: initialError, onLogin }: { setup: boolean; inviteToken: string; error: string; onLogin: (user: Account) => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -49,8 +57,13 @@ function LoginScreen({ setup, error: initialError, onLogin }: { setup: boolean; 
     event.preventDefault(); setBusy(true); setError('');
     const data = new FormData(event.currentTarget);
     const payload = Object.fromEntries(data.entries());
+    if (inviteToken) {
+      if (payload.password !== payload.confirmPassword) { setError('As senhas digitadas não são iguais.'); setBusy(false); return; }
+      payload.inviteToken = inviteToken;
+      delete payload.confirmPassword;
+    }
     try {
-      const response = await request(setup ? 'setup' : 'login', payload);
+      const response = await request(inviteToken ? 'activate' : setup ? 'setup' : 'login', payload);
       onLogin(response.user);
     } catch (e) { setError(e instanceof Error ? e.message : 'Falha no acesso.'); }
     finally { setBusy(false); }
@@ -71,16 +84,17 @@ function LoginScreen({ setup, error: initialError, onLogin }: { setup: boolean; 
       <div className="auth-mobile-brand"><b>st<span>1</span></b> connect</div>
       <div className="auth-form-shell">
         <div className="auth-symbol"><LockKeyhole size={26}/></div>
-        <div className="auth-overline">{setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
-        <h2>{setup ? 'Ative o ST1 Connect' : 'Acesse sua conta'}</h2>
-        <p className="auth-subtitle">{setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
+        <div className="auth-overline">{inviteToken ? 'SEU CONVITE DE ACESSO' : setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
+        <h2>{inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : 'Acesse sua conta'}</h2>
+        <p className="auth-subtitle">{inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
         {forgot ? <div className="auth-help"><KeyRound size={22}/><h3>Precisa recuperar o acesso?</h3><p>Solicite a redefinição da sua senha ao administrador do ST1 Connect. Por segurança, não existe recuperação por e-mail nesta versão.</p><button type="button" className="auth-text-button" onClick={() => setForgot(false)}>Voltar para o login</button></div> : <form className="auth-form" onSubmit={submit}>
           {setup && <><label>Seu nome completo<input name="name" required minLength={3} maxLength={80} placeholder="Nome e sobrenome" autoComplete="name"/></label><label>Código de ativação<input name="setupToken" type="password" required autoComplete="off" placeholder="Código privado do administrador"/></label></>}
-          <label>E-mail corporativo<input name="email" type="email" required maxLength={180} placeholder="seu.email@empresa.com.br" autoComplete="username" autoFocus /></label>
-          <label>Senha<div className="auth-password"><input name="password" type={visible ? 'text' : 'password'} required minLength={setup ? 12 : 1} maxLength={128} placeholder={setup ? 'Mínimo de 12 caracteres' : 'Digite sua senha'} autoComplete={setup ? 'new-password' : 'current-password'}/><button type="button" aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></label>
+          {inviteToken ? <div className="auth-invite-email"><UserRound size={18}/><div><small>Conta reservada para</small><strong>Viniciusagnes@st1.net.br</strong><span>Administrador · ST1 Connect</span></div><ShieldCheck size={20}/></div> : <label>E-mail corporativo<input name="email" type="email" required maxLength={180} placeholder="seu.email@empresa.com.br" autoComplete="username" autoFocus /></label>}
+          <label>{inviteToken ? 'Crie sua senha' : 'Senha'}<div className="auth-password"><input name="password" type={visible ? 'text' : 'password'} required minLength={setup || inviteToken ? 12 : 1} maxLength={128} placeholder={setup || inviteToken ? 'Mínimo de 12 caracteres com letras e números' : 'Digite sua senha'} autoComplete={setup || inviteToken ? 'new-password' : 'current-password'} autoFocus={Boolean(inviteToken)}/><button type="button" aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></label>
+          {inviteToken && <label>Confirme sua senha<input name="confirmPassword" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} placeholder="Repita a senha escolhida" autoComplete="new-password"/></label>}
           {error && <div className="auth-error" role="alert">{error}</div>}
-          {!setup && <button type="button" className="auth-forgot" onClick={() => setForgot(true)}>Esqueci minha senha</button>}
-          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Validando acesso...' : setup ? 'Ativar administrador' : 'Entrar no ST1 Connect'}<ArrowRight size={18}/></button>
+          {!setup && !inviteToken && <button type="button" className="auth-forgot" onClick={() => setForgot(true)}>Esqueci minha senha</button>}
+          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Validando acesso...' : inviteToken ? 'Ativar minha conta' : setup ? 'Ativar administrador' : 'Entrar no ST1 Connect'}<ArrowRight size={18}/></button>
         </form>}
         <div className="auth-footer"><ShieldCheck size={15}/> Acesso protegido e exclusivo para usuários autorizados.</div>
       </div>
