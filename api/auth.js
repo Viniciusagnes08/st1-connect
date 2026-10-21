@@ -28,7 +28,7 @@ const error = (res, status, message) => res.status(status).json({ error: message
 const noCache = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); };
 const apiHeaders = () => ({
   Authorization: `Bearer ${token()}`,
-  'x-vercel-blob-store-id': `store_${storeId()}`,
+  'x-vercel-blob-store-id': storeId(),
   'x-api-version': '13',
 });
 async function load() {
