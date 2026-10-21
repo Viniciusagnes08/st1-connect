@@ -1,0 +1,34 @@
+name: Validate ST1 Connect
+
+on:
+  push:
+    branches:
+      - main
+      - fix/sidebar-responsive-navigation
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Fetch source
+        uses: actions/checkout@v4
+      - name: Prepare Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit and layout regression tests
+        run: npm test
+      - name: TypeScript and Vite build
+        run: npm run build
