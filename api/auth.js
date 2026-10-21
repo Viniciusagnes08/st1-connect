@@ -1,8 +1,8 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
-const DAY = 86400;
+const INVITATION_MS = 7 * 24 * 60 * 60 * 1000;
 const ROLES = ['Administrador', 'Supervisor', 'Técnico', 'Solicitante'];
 const secret = () => process.env.ST1_AUTH_SECRET;
 const token = () => process.env.BLOB_READ_WRITE_TOKEN;
@@ -85,6 +85,19 @@ function validPassword(password) {
 }
 function validName(name) { return typeof name === 'string' && name.trim().length >= 3 && name.trim().length <= 80; }
 function validEmail(email) { return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 180; }
+function initialAdministrator() {
+  const email = String(process.env.ST1_BOOTSTRAP_EMAIL || '').trim().toLowerCase();
+  const invitationHash = String(process.env.ST1_BOOTSTRAP_INVITE_HASH || '').trim().toLowerCase();
+  if (!validEmail(email) || !/^[a-f0-9]{64}$/.test(invitationHash)) return null;
+  const name = String(process.env.ST1_BOOTSTRAP_NAME || 'Administrador ST1').trim();
+  return {
+    id: randomBytes(12).toString('hex'), name: validName(name) ? name : 'Administrador ST1',
+    email, passwordHash: '', role: 'Administrador', active: true,
+    version: 1, attempts: 0, blockedUntil: 0,
+    createdAt: new Date().toISOString(),
+    invitationHash, inviteExpiresAt: new Date(Date.now() + INVITATION_MS).toISOString(),
+  };
+}
 function makeUser(name, email, password, role) {
   return { id: randomBytes(12).toString('hex'), name: name.trim(), email: email.trim().toLowerCase(), passwordHash: hash(password), role, active: true, version: 1, attempts: 0, blockedUntil: 0, createdAt: new Date().toISOString() };
 }
@@ -100,12 +113,24 @@ export default async function handler(req, res) {
     if (Number(req.headers['content-length'] || 0) > 16000) return error(res, 413, 'Requisição muito grande.');
   }
   try {
-    const state = await load();
+    let state = await load();
+    if (state.users.length === 0) {
+      const bootstrap = initialAdministrator();
+      if (bootstrap) {
+        try {
+          await save([bootstrap], null);
+          state = await load();
+        } catch (error) {
+          if (error.status !== 409) throw error;
+          state = await load();
+        }
+      }
+    }
     const me = current(req, state.users);
     const b = typeof req.body === 'object' && req.body ? req.body : {};
     if (action === 'status' && req.method === 'GET') return res.json({ configured: state.users.length > 0, user: me ? identity(me) : null });
     if (action === 'setup' && req.method === 'POST') {
-      if (state.users.length) return error(res, 409, 'A primeira conta já foi configurada.');
+      if (state.users.length || process.env.ST1_BOOTSTRAP_EMAIL) return error(res, 409, 'A primeira conta está reservada para ativação pelo e-mail corporativo.');
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
       if (!validName(b.name) || !validEmail(b.email) || !validPassword(b.password)) return error(res, 400, 'Informe nome, e-mail e senha de 12 a 128 caracteres, com letras e números.');
       const admin = makeUser(b.name, b.email, b.password, 'Administrador');
@@ -113,10 +138,26 @@ export default async function handler(req, res) {
       setSession(res, admin);
       return res.status(201).json({ user: identity(admin) });
     }
+    if (action === 'activate' && req.method === 'POST') {
+      const activationToken = typeof b.inviteToken === 'string' ? b.inviteToken : '';
+      const hashedToken = createHash('sha256').update(activationToken).digest('hex');
+      const invitedUser = state.users.find(u => u.invitationHash && equal(u.invitationHash, hashedToken));
+      if (!invitedUser || !invitedUser.active || !invitedUser.inviteExpiresAt || Date.parse(invitedUser.inviteExpiresAt) < Date.now()) {
+        return error(res, 403, 'O convite é inválido ou expirou. Solicite um novo acesso ao administrador.');
+      }
+      if (!validPassword(b.password)) return error(res, 400, 'Use uma senha entre 12 e 128 caracteres, com letras e números.');
+      invitedUser.passwordHash = hash(b.password);
+      delete invitedUser.invitationHash;
+      delete invitedUser.inviteExpiresAt;
+      invitedUser.version += 1;
+      await save(state.users, state.etag);
+      setSession(res, invitedUser);
+      return res.json({ user: identity(invitedUser) });
+    }
     if (action === 'login' && req.method === 'POST') {
       const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
       const user = state.users.find(u => u.email === email);
-      if (!user || !user.active) return error(res, 401, 'E-mail ou senha incorretos.');
+      if (!user || !user.active || !user.passwordHash) return error(res, 401, 'E-mail ou senha incorretos.');
       if (user.blockedUntil > Date.now()) return error(res, 429, 'Muitas tentativas. Aguarde alguns minutos.');
       if (!check(String(b.password || ''), user.passwordHash)) {
         user.attempts = (user.attempts || 0) + 1;
