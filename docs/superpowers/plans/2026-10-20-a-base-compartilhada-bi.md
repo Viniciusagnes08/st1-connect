@@ -34,6 +34,7 @@
 | `api/_lib/bi-service.js` | regras de criação, acesso e idempotência |
 | `api/_lib/bi-service.test.js` | testes determinísticos do serviço |
 | `api/bi-tickets.js` | GET/POST dos chamados reais |
+| `api/bi-members.js` | gestão de membros do Squad por Admin, sem confundir perfil e equipe |
 | `api/requests.js` | GET de solicitações do próprio usuário |
 | `src/features/bi/types.ts`, `src/features/bi/api.ts` | contrato do cliente sem segredos |
 | `src/features/bi/QueuePage.tsx`, `src/features/bi/MyRequestsPage.tsx` | primeiras telas reais |
@@ -163,6 +164,13 @@ CREATE TABLE IF NOT EXISTS bi_tickets (
   assignee_user_id text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS bi_memberships (
+  user_id text PRIMARY KEY,
+  bi_role text NOT NULL CHECK (bi_role IN ('manager','analyst')),
+  active boolean NOT NULL DEFAULT true,
+  granted_by text NOT NULL,
+  granted_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS request_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -367,7 +375,7 @@ export async function createBiRequest(db, actor, input, key) {
 }
 ~~~
 
-A função acima **é chamada exclusivamente dentro de `inTransaction`**; a constraint única e o advisory lock impedem criação duplicada sob duas requisições concorrentes do mesmo usuário/chave. A API deve retornar 409 quando uma chave for reutilizada com payload diferente.
+A identidade do solicitante vem exclusivamente da sessão e o usuário atendente deve constar em `bi_memberships` (membro ativo). O papel Técnico/Supervisor, isoladamente, **não** concede acesso à fila BI. A função acima **é chamada exclusivamente dentro de `inTransaction`**; a constraint única e o advisory lock impedem criação duplicada sob duas requisições concorrentes do mesmo usuário/chave. A API deve retornar 409 quando uma chave for reutilizada com payload diferente.
 
 - [ ] **Step 4: testar com banco isolado** criação, repetição com a mesma chave, repetição com alteração de payload e rollback após erro induzido. Com `DATABASE_URL_TEST` o teste de integração deve afirmar exatamente um registro em `request_records`, um em `bi_tickets` e um em `submission_keys`. Sem base de teste, execução bloqueada para release, não "aprovada por mock".
 
@@ -430,6 +438,11 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       if (!['Administrador','Supervisor','Técnico'].includes(user.role))
         return res.status(403).json({ error: 'Acesso exclusivo do BI' });
+      const membership = await connection().query(
+        'SELECT bi_role FROM bi_memberships WHERE user_id=$1 AND active=true',
+        [user.id]
+      );
+      if (!membership.rowCount) return res.status(403).json({ error: 'Usuário não pertence ao Squad BI' });
       const list = await connection().query(
         "SELECT r.id,r.protocol,r.title,r.created_at,b.state FROM request_records r JOIN bi_tickets b ON b.request_id=r.id WHERE r.scope='BI' ORDER BY r.created_at DESC LIMIT 100"
       );
@@ -440,7 +453,9 @@ export default async function handler(req, res) {
 }
 ~~~
 
-`api/requests.js` deve usar `currentPrincipal` e consulta parametrizada `WHERE requester_user_id=$1`, retornando somente registros do ator. **Não aceitar `?userId=...` vindo do frontend como filtro de autorização.** Testar 401 (sem sessão), 403 (solicitante na fila BI) e 200 para dono do registro.
+`api/bi-members.js` expõe GET/POST apenas a Administrador, validando Origem nos POST; cadastra ou desativa `bi_memberships` **somente para conta ativa existente no Blob privado**, sem aceitar `userId` desconhecido. Um endpoint não autenticado nunca consulta a relação de membros. Na configuração inicial, cadastrar o administrador e analistas reais do Squad; não conceder participação BI a todos que possuam perfil Técnico ou Supervisor.
+
+`api/requests.js` deve usar `currentPrincipal` e consulta parametrizada `WHERE requester_user_id=$1`, retornando somente registros do ator. **Não aceitar `?userId=...` vindo do frontend como filtro de autorização.** Testar 401 (sem sessão), 403 (solicitante na fila BI), 403 (Técnico/Supervisor sem `bi_memberships`) e 200 para dono do registro.
 
 - [ ] **Step 4: teste de leitura cruzada e paginação.** Em banco de teste, criar solicitações de dois usuários; GET autenticado deve trazer somente as do próprio solicitante, e GET de BI apenas para equipe autorizada. Definir limite 100 por página com cursor seguro antes de subir acima de 1000 registros. Commit: `feat(api): enforce access to shared BI requests`.
 
@@ -500,7 +515,7 @@ export async function readOwnRequests(): Promise<OwnRequestRow[]> {
 ~~~
 
 - [ ] **Step 3: montar duas telas com estados reais.** Em `QueuePage.tsx` e `MyRequestsPage.tsx`, usar `useEffect` + `useState` para buscar respectivamente `readBiQueue()` e `readOwnRequests()`; exibir `Carregando`, lista com protocolo e título, `Nenhum registro real` e erro com botão `Tentar novamente`. Não importar `createSeedData()` nessas telas.
-- [ ] **Step 4: inserir navegação protegida.** Em `App.tsx` incluir `'bi-queue'` e `'my-requests'` em Page/PAGE_INFO; `permitted` permite `bi-queue` apenas a Admin, Supervisor e Técnico e `my-requests` a qualquer autenticado. Manter os itens demonstrativos separados e explicitamente rotulados **Dados demonstrativos** até concluir corte supervisionado.
+- [ ] **Step 4: inserir navegação protegida.** Em `App.tsx` incluir `'bi-queue'` e `'my-requests'` em Page/PAGE_INFO; `permitted` permite `bi-queue` somente a Admin, Supervisor e Técnico **com membership BI ativo obtido de endpoint protegido** e `my-requests` a qualquer autenticado. A API é a autoridade: ocultar menu é apenas conveniência, nunca barreira de segurança. Manter os itens demonstrativos separados e explicitamente rotulados **Dados demonstrativos** até concluir corte supervisionado.
 - [ ] **Step 5: build e conferência.** `npm test && npm run build`; testar 390px e desktop, logout, rota manual proibida, 401/403, rede offline e atualização cruzada em outro navegador autorizado. Commit: `feat(ui): show real BI queue and own requests`.
 
 ## Task 7: Quality Gate, rollback e liberação controlada
@@ -534,6 +549,7 @@ Nunca retornar URL de conexão, esquema, dados, nomes de usuário nem stacktrace
 
 - [ ] Integração PostgreSQL provisionada com custo/escopo aceitos, sem segredos no Git.
 - [ ] O login existente continua funcionando, inclusive revogação de sessão e alterações de papel.
+- [ ] O acesso à fila BI exige **perfil autorizado e membership BI ativo**; membros são atribuídos por Administrador a contas já existentes.
 - [ ] O novo protocolo BI é persistido em uma transação com idempotência.
 - [ ] Só a equipe BI vê a fila real; cada solicitante vê somente seus próprios pedidos.
 - [ ] Nenhum ticket demonstrativo foi movido automaticamente para o banco.
