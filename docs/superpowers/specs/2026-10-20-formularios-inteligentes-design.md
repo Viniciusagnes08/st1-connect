@@ -1,145 +1,284 @@
-# ST1 Connect — Central de Solicitações Inteligentes
-**Data:** 20/10/2026  
-**Status:** arquitetura aprovada pelo solicitante; especificação de implementação para revisão.  
-**Projeto:** [ST1 Connect](https://github.com/Viniciusagnes08/st1-connect) → [Vercel](https://st1-connect.vercel.app/).
+# ST1 Connect — Central de Demandas do Squad de BI
 
-## 1. Resultado esperado
-Substituir a abertura genérica de chamados por um catálogo de formulários rápidos e específicos para cada problema. Colaboradores entram com login e pessoas externas respondem somente por convite/link controlado. Toda resposta válida gera um chamado real e compartilhado no backend, com fila, equipe, situação, SLA e histórico.
+**Data original:** 20/10/2026  
+**Revisão:** 20/10/2026, escopo exclusivo do Squad de BI e encaminhamento interáreas configurável.  
+**Estado:** direção de produto e arquitetura aprovadas; especificação atualizada para revisão técnica e funcional. **Nenhuma implementação deste redesenho está ativa em produção.**  
+**Repositório:** https://github.com/Viniciusagnes08/st1-connect  
+**Ambiente atual:** https://st1-connect.vercel.app/
 
-**Meta de experiência:** chegar ao formulário apropriado em até dois cliques e permitir preencher um caso simples em menos de 90 segundos, meta de usabilidade a validar por teste com usuários, não uma promessa medida. Exibir entre 2 e 5 perguntas de negócio por formulário; informações conhecidas devem vir preenchidas automaticamente.
+## 1. Decisão e objetivo
 
-## 2. Estado atual validado
-- O frontend atual é React + TypeScript + Vite, hospedado no Vercel. O painel tem navegação por hash: Visão geral, Chamados, Ativos, Conhecimento, Equipes, Relatórios e Configurações.
-- A autenticação é feita no servidor em `api/auth.js`, com perfis Administrador, Supervisor, Técnico e Solicitante; suas contas estão em Vercel Blob privado.
-- Os **chamados e ativos ainda ficam no `localStorage`**. O código atual não oferece banco transacional nem autorização no servidor para chamados. Isso impede colaboração segura; migrar os registros é um pré-requisito antes do uso operacional do módulo.
-- Não há integração ativa com notificações de e-mail/WhatsApp, Kommo, GLPI ou IXC. Não afirmar essas integrações como existentes.
-- O projeto Vercel foi identificado; nenhuma configuração atual de banco PostgreSQL conectado foi encontrada na inspeção das integrações acessíveis. A conexão transacional requer provisionamento antes da ativação da nova funcionalidade.
+**O ST1 Connect é a porta de entrada e central operacional do Squad de BI da ST1 Internet, não um helpdesk geral da empresa.** Ele serve para receber, qualificar, executar e acompanhar solicitações de BI, dados, indicadores, relatórios, dashboards e automações de dados de responsabilidade formal do Squad.
 
-## 3. Alternativas consideradas
-1. **Formulários nativos + PostgreSQL gerenciado — ESCOLHIDO.** Melhor experiência, trilha de auditoria e vínculo com chamados; exige provisionar banco, migração e API.
-2. **Google Forms + sincronização:** viabiliza pilotos com rapidez, mas fragmenta as telas, exige integrações e dificulta condições, papéis e rastreabilidade.
-3. **Vercel Blob JSON para tudo:** requer pouca infraestrutura adicional, mas não é adequado como banco transacional de chamados com escritas simultâneas. Mantê-lo para arquivos privados, não para filas compartilhadas.
+Para pedidos fora desse escopo, o produto exerce o papel de **triagem e encaminhamento rastreável**: mostra a classificação e a orientação no próprio sistema, envia notificação por e-mail ao solicitante autenticado e encaminha o conjunto de informações necessárias ao **canal oficial configurado da área responsável**. Não se atribui ao BI a responsabilidade de executar trabalho de outras áreas nem se mistura encaminhamento com produtividade ou SLA de resolução do BI.
 
-## 4. Escopo funcional da primeira versão
-### 4.1. Catálogo de solicitações
-Rota interna `#/solicitar`. Cards com ícone, título curto, frase de contexto e busca. Seções:
-- Acessos e sistemas
-- CRM, Kommo e ST1 Sales
-- BI, dados e indicadores
-- Rede e conectividade
-- Equipamentos
-- Serviços internos
-- Orientações
+A configuração de encaminhamento é **por área/tipo de assunto**, não uma automação fixa para um único canal. Cada regra deve ter área, DRI/canal institucional verificados, dados a transmitir, condições e política de falha. Canal inexistente ou ambíguo significa **triagem manual**, não envio aleatório.
 
-Busca por sinônimos e nome de aplicativo; apresentação dos formulários mais utilizados pelo usuário quando houver histórico. Não exibir filas técnicas ao solicitante.
+A experiência continua orientada à rapidez: catálogo em até dois cliques e formulários com duas a cinco perguntas específicas, quando possível; a meta de completar um caso simples em menos de 90 segundos será medida em testes com usuários.
 
-### 4.2. Formulário contextual
-Rota interna `#/formulario/:slug` e página pública direta `/f/:slug?convite=TOKEN` (a rota pública deve ser resolvida pelo frontend sem depender do hash). Mostrar andamento `1. Assunto → 2. Informações → 3. Confirmar` e resumo antes de enviar.
+## 2. Situação tecnológica observada e dependências
 
-Campos obrigatórios comuns: nome, contato, tipo de problema, descrição objetiva; nome e e-mail vêm da sessão quando há login. Campos opcionais: local, equipamento, evidência. Campos técnicos só aparecem conforme a escolha anterior. Sempre validar no servidor o conjunto de campos e opções publicado na versão do formulário.
+- Código existente em React, TypeScript e Vite com frontend no Vercel. Há módulos de chamados, visão geral, ativos, conhecimento, equipes, relatórios e configurações.
+- Login com perfis **Administrador, Supervisor, Técnico e Solicitante**, sessões validadas no servidor; cadastro atual das contas em Blob privado.
+- **Chamados e ativos ainda são registros locais no navegador (localStorage)** e não podem sustentar uma fila colaborativa com autorização server-side. É obrigatório migrar novos registros operacionais para banco transacional compartilhado antes de expor esta funcionalidade à equipe.
+- Não foi confirmada na inspeção anterior uma integração PostgreSQL operacional no projeto, nem provedor de e-mail transacional, nem canais externos de Trello/webhook conectados ao ST1 Connect. **A especificação não significa que e-mails, cards ou mensagens estejam sendo enviados hoje.**
+- Exemplos existentes (incluindo chamados e agentes fictícios) não são dados reais; não os migrar automaticamente.
+- A estrutura atual de status e perfis pode ser reaproveitada, mas **estado de atendimento BI** e **estado de encaminhamento externo** são entidades distintas no novo backend.
 
-A prioridade deve ser sugerida a partir de impacto/urgência (não o próprio solicitante definir "Crítica" diretamente) e confirmada pelo time. Solicitações repetidas no mesmo minuto devem ter proteção contra duplo envio.
+## 3. Alternativas consideradas e escolha
 
-### 4.3. Biblioteca inicial de modelos
-Modelos editáveis, com valores e roteamento iniciais sujeitos à confirmação do administrador antes de publicação operacional:
-| Modelo | Perguntas específicas | Destino inicial |
+| Alternativa | Vantagem | Limitação | Decisão |
+| --- | --- | --- | --- |
+| **Formulários nativos + banco compartilhado + roteador de integrações por área** | Experiência única, rastreabilidade, diferenciação de escopo e mensageria confiável | Exige banco, credenciais de provedores e homologação de destinos | **Aprovada** |
+| Google Forms + notificações por planilha | Primeiro piloto mais rápido | Fragmenta autenticação, permissões, histórico e experiência | Não usar como arquitetura principal |
+| E-mail genérico ao solicitante e a todas as áreas | Simples | Gera ruído, perda de ownership e exposição indevida | Rejeitada |
+
+**Regra:** o ST1 Connect é a origem do protocolo e da trilha de auditoria; o Trello, e-mail setorial ou outro destino aprovado é o **sistema canônico de execução da área receptora**. Evitar criar segunda fila de execução ou duplicar atividades indevidamente.
+
+## 4. Experiência de quem solicita
+
+### 4.1. Catálogo principal orientado ao BI
+
+Página interna **Solicitar**: título "O que você precisa do BI?", busca por palavras-chave e cards com frases humanas. O catálogo principal não será um menu geral de TI/Marketing.
+
+Modelos iniciais priorizados (cada um possui formulário versionado, perguntas condicionais e resumo antes do envio):
+
+| Formulário | Perguntas obrigatórias específicas | Resultado esperado |
 | --- | --- | --- |
-| Não consigo acessar | Sistema, mensagem de erro, desde quando, quem foi afetado | Sistemas |
-| Solicitar novo acesso | Sistema, finalidade, área, aprovação requerida | Sistemas |
-| Erro no Kommo | Funil/tela, erro, impacto, momento | Sistemas |
-| Problema no ST1 Sales | Módulo, ação tentada, erro, impacto | Sistemas |
-| Divergência em BI | Painel, métrica, período/filtro, esperado vs. observado | Sistemas (triagem para BI) |
-| Falha na conexão interna | Unidade/ambiente, início, quantidade de pessoas afetadas | Redes |
-| Equipamento com defeito | Tipo/identificação, sintoma, impacto | Suporte |
-| Solicitação operacional | Área, resultado esperado, necessidade, prazo desejado | Administrativo |
-| Orientação/ajuda | Tema, dúvida objetiva, resultado esperado | Suporte |
+| **Novo dashboard ou relatório** | Objetivo/decisão, público, métricas, fonte disponível, periodicidade | Avaliar viabilidade, escopo, responsável e prioridade do BI |
+| **Ajuste em dashboard existente** | Nome/link do painel, mudança desejada, motivo e exemplo | Solicitação de melhoria com evidências |
+| **Erro ou divergência em indicador** | Painel/métrica, período e filtros, valor observado, referência/esperado | Triagem de confiabilidade, sem assumir causa |
+| **Extração ou consulta de dados** | Campos, filtros/período, finalidade, formato e aprovação de acesso | Avaliar acesso permitido e produção de extração |
+| **Integração entre bases de dados** | Sistemas/fonte e destino, campos envolvidos, frequência, resultado | Avaliar arquitetura, segurança e dependências |
+| **Automação de dados/BI** | Rotina atual, gatilho, volume/frequência, resultado desejado | Levantamento técnico e impacto |
+| **Acesso a relatório/dado sob gestão do BI** | Relatório/base, justificativa, área e aprovação aplicável | Solicitar acesso restrito de BI, não permissão geral de sistema |
+| **Orientação sobre dados** | Assunto, dúvida objetiva e decisão pretendida | Esclarecer ou direcionar para a base de conhecimento |
 
-**Não inventar agentes ou prazos reais.** No protótipo, as equipes aparecem como sugestões; publicação de destino e metas de SLA requer validação pela ST1. Exigir descrição concreta e opções fechadas sempre que possível. Não usar "Outro motivo" como saída genérica; para assuntos não mapeados, oferecer "Preciso de orientação" com triagem explícita.
+**Casos de outras áreas** devem ficar num caminho secundário, como "Não sei se é com BI" ou ser identificados pelas regras ao preencher. Não oferecer como serviços executáveis do BI tarefas de rede, equipamento, manutenção geral de sistemas, Marketing, Finanças e RH.
 
-### 4.4. Construtor de formulários
-Rota `#/formularios` para Administrador, com tabela e ações: Criar, Duplicar, Editar, Pré-visualizar, Publicar, Arquivar e Compartilhar.
+### 4.2. Fluxo da interface
 
-Editor em três painéis ou passos: **Identificação** (título, explicação, ícone, categoria); **Perguntas** (texto curto, texto longo, escolha única, múltipla, data e número, obrigatório, ajuda contextual, visibilidade condicional); **Destino e acesso** (equipe, público interno/externo, política de links). Arrastar e reordenar é opcional; botões subir/descer devem funcionar por teclado. Exibir prévia real em layout móvel.
+**Selecionar assunto → Responder perguntas objetivas → Revisar classificação e dados → Enviar → Acompanhar protocolo.**
 
-Alterar um modelo publicado cria **nova versão**; respostas antigas continuam ligadas à versão que originou o chamado. Formularios arquivados deixam de receber novas respostas, mas preservam histórico. O Administrador decide quem pode publicar; Supervisor pode gerar links de modelos já aprovados; Técnico e Solicitante apenas preenchem.
+- Nome, e-mail e área conhecida vêm do login. Para usuário logado, enviar notificações para o **e-mail verificado da conta**, nunca para texto de e-mail alterável no formulário.
+- Exibir somente campos pertinentes; pré-preencher informações disponíveis, sem exigir descrição repetitiva. Campo de evidência opcional e controlado por política de arquivos.
+- Classificação em tempo real com mensagem simples: **"Atendido pelo Squad de BI"**, **"Outra área responsável"** ou **"Vamos verificar a área responsável"**.
+- Se for outra área, apresentar área/canal propostos e explicar que **o BI não executará a demanda**. Solicitar confirmação antes do primeiro encaminhamento externo para que a pessoa revise o conteúdo que será compartilhado.
+- Caso o usuário discorde do enquadramento, oferecer **"Solicitar revisão da classificação"** com justificativa objetiva; vai à triagem BI sem envio externo até revisão.
+- Na confirmação, mostrar protocolo, estado atual, próximos passos, destino e situação real de envio. Protocolo é gerado **antes** de tentar entregar notificações, dentro de transação persistida.
+- "Enviado", "recebido", "em atendimento" e "resolvido" não podem ser tratados como sinônimos.
 
-### 4.5. Compartilhamento
-Ao clicar em **Compartilhar**:
-- Copiar link interno para colaboradores.
-- Criar convite externo **individual e revogável**, com token aleatório de pelo menos 256 bits, armazenado apenas como hash no banco, escopo de formulário e versão, data de expiração e limite de utilização (padrão: 1 envio). Nunca expor segredos em relatórios ou logs.
-- Abrir WhatsApp com texto preenchido e link; abrir cliente de e-mail com assunto e corpo; copiar texto.
-- Administrador/Supervisor pode revogar o convite e acompanhar situação `ativo / usado / expirado / revogado`.
-- A primeira versão não fará envio automático por WhatsApp ou e-mail sem provedor conectado; compartilhar é uma ação explícita do operador por canais existentes, com confirmação visual de que o link foi copiado/aberto, sem fingir entrega.
-- Para envio a vários colaboradores internos, usar links de autenticação normal e o atalho de formulário; não gerar um link público irrestrito por conveniência.
+### 4.3. Links para colaboradores e convidados externos
 
-### 4.6. Respostas e chamados
-Toda submissão aceita entra numa transação única que registra formulário, versão, respostas, solicitante, chamado, equipe e evento no histórico. A UI mostra `Recebido • Chamado ST1-xxxxx` com instrução de acompanhamento. Visitantes externos recebem comprovante sem acesso à fila interna; colaboradores autenticados veem o andamento de seus chamados. Não inserir demo tickets em tabelas operacionais.
+- **Internos:** login obrigatório; formulário abre já vinculado ao ID do usuário, perfil e e-mail cadastrado.
+- **Convidados externos:** somente link individual com token aleatório forte, hash no banco, validade, limite de usos, formulário permitido e destinatário pretendido. Link não libera outras telas nem lista solicitações.
+- Confirmar o contato de convidado externo por endereço verificado/convite associado quando houver comunicação por e-mail. Não confiar em endereço digitado sem verificação como identidade corporativa.
+- Em caso de link vencido, revogado ou utilizado, explicar no próprio formulário e oferecer retorno ao emissor; não criar registro falso.
+- Quando o convidado puder enviar dados pessoais, definir termo de uso e retenção mínima. Tokens não aparecem em logs e são retirados da URL após validação.
 
-Chamados aparecem na Central com rótulo `Via formulário` e título composto de modelo + resposta resumida. Supervisor/Admin podem reencaminhar com justificativa. Alterações e notas seguem rastro de auditoria; mensagens de atualização interna não devem vazar ao público.
+## 5. Fronteira do Squad de BI: diretório de responsabilidade
 
-## 5. Persistência e migração
-**Banco obrigatório:** PostgreSQL gerenciado, conectado por variável privada (`DATABASE_URL`) às Vercel Functions. Avaliar Neon/Postgres via integração autorizada no Vercel; **não provisionar plano pago sem revisão de custo e autorização**. Usar migração SQL versionada. Modelo relacional:
-- `users` (identidade, papel, ativo; incorporar ou mapear IDs existentes do Blob)
-- `form_templates`, `form_versions`, `form_fields`
-- `share_invites` (token hash, expiração, max_uses, uses, revogado)
-- `form_submissions`, `form_answers`
-- `tickets`, `ticket_events`, `ticket_assignees`
-- `assets`, `teams`, `audit_log`
-- `request_limits` para limitação por IP/convite e mitigação de abuso, com retenção mínima.
+O Administrador terá um módulo **Regras de encaminhamento** para manter uma tabela governada e versionada:
 
-FKs, índices por equipe/status/data e transações no backend. Os arquivos de evidência, se habilitados, vão ao Blob privado com validação de formato/tamanho, referência no Postgres e URLs temporárias autorizadas. Nada de credenciais, dados pessoais ou resposta sensível no `localStorage`.
+- **Assunto e palavras-chave / modelo de origem**.
+- **Área proprietária do assunto**: BI (interno), CRM/Sistemas, Marketing, Redes/TI, Financeiro, RH ou outra área cadastrada explicitamente.
+- **DRI institucional e canal canônico confirmado**; sem DRI e canal válidos, status **Sem destino confirmado** e triagem manual.
+- **Tipo de integração**: Trello, caixa postal setorial, webhook interno aprovado ou entrega manual assistida. WhatsApp via API somente se houver canal corporativo homologado; não inferir envio automático de um link wa.me.
+- **Configuração técnica**: identificador seguro do quadro/lista Trello, destinatário de e-mail allowlist ou webhook HTTPS autorizado; credenciais apenas no servidor; nenhuma chave no frontend.
+- **Regra de elegibilidade e confiança**: classificação determinística pelos campos do formulário e opções fechadas, priorizando regras explícitas por serviço. Não criar "roteamento por IA" imprevisível como única decisão.
+- **Modo**: encaminhamento após confirmação do solicitante (padrão para externo); triagem humana para casos ambíguos, de alto risco ou com conteúdo sensível.
+- **Versão da regra** e data de revisão; mudanças valem para novos registros, sem reescrever histórico antigo.
+- **Campos compartilháveis** por destino, anexos e permissões; exigir mínimo necessário.
 
-**Migração da demonstração:** manter o conteúdo local intacto; oferecer importação explícita só para administrador, com revisão, origem identificada e confirmação, nunca sincronização automática dos 48 chamados fictícios.
+Exemplos orientativos, ainda **sujeitos à confirmação de ownership e integração na ST1**:
 
-## 6. API e isolamento
-Endpoints sob `/api/forms` e `/api/tickets`, retornando JSON e erros consistentes.
-- `GET /api/forms/catalog`: listar modelos internos publicados respeitando perfil.
-- `GET /api/forms/:slug`: obter versão publicada e perguntas permitidas.
-- `POST /api/forms`, `PATCH /api/forms/:id`, `POST /api/forms/:id/publish`: Administrador.
-- `POST /api/forms/:id/invites`, `POST /api/forms/invites/:id/revoke`: Administrador/Supervisor.
-- `GET /api/public/forms/:slug?convite=...`: valida convite e devolve campos públicos sem PII privada.
-- `POST /api/public/forms/:slug/submit`: valida token, campos, limites e grava ticket.
-- `POST /api/forms/:id/submit`: colaborador autenticado.
-- `GET /api/tickets`, `GET /api/tickets/:id`, `PATCH /api/tickets/:id`: controle de acesso no **servidor** por papel, equipe e `requester_user_id`.
+| Assunto detectado | Tratamento | Destino potencial |
+| --- | --- | --- |
+| Criar painel, corrigir métrica ou extrair dados autorizados | BI | Fila interna do Squad |
+| Erro funcional no Kommo CRM, funis, automações e permissões do CRM | Fora de escopo | CRM/Sistemas (DRI e Trello a validar) |
+| Erro de interface ou acesso geral ao ST1 Sales | Fora de escopo, exceto métricas/painéis BI | Sistemas (canal a validar) |
+| Meta Ads, mídia, criativos e landing pages | Fora de escopo | Marketing (canal a validar) |
+| Wi-Fi, equipamentos e problemas de rede | Fora de escopo | Redes/TI (canal a validar) |
+| Pagamentos, reembolsos, folha, questões de pessoal | Fora de escopo | Financeiro/RH (canal a validar) |
+| Indicador relacionado a Kommo e BI | **Híbrido**: identificar domínio primário; registrar dependências | Um único owner principal; partes interessadas documentadas |
 
-Para sessões existentes, reutilizar cookie HTTP-only e validação de usuário no backend, não confiar em `role` fornecido pelo navegador. Contas sem convite válido não podem acessar formulários externos reservados. Respostas de APIs jamais retornam hash de token, credenciais ou campos confidenciais.
+Princípio de governança: responsabilidade é definida pelo **problema primário**, não pela plataforma citada. Divergência de dados no dashboard é BI até prova de dependência externa; falha de automação comercial no Kommo é CRM, ainda que afete indicadores. Nunca atribuir nominalmente responsáveis atuais ou disponibilidade sem leitura da fonte operacional vigente.
 
-## 7. Segurança, LGPD e resiliência
-- Sanitizar entradas, limitar tamanho/tipo de arquivo, escapar conteúdo, prevenir envio duplicado e CSRF, exigir HTTPS; `sameSite=Strict` para sessão interna.
-- Validar Origem nos POST internos. Nos formulários externos, link de uso limitado + rate limiting no backend, opção de proteção anti-bot quando o tráfego justificar; sem API externa de CAPTCHA conectada inicialmente.
-- Token público na URL pode entrar em histórico: remover da barra após abertura, usar `Referrer-Policy: no-referrer` na rota pública e não carregar pixels de terceiros; não registrar URLs com query contendo convite.
-- Limitar exposição de informações na confirmação pública; e-mail de contato como dado para retorno, sem divulgação a terceiros.
-- Idempotência para submissão; erros de persistência não devem exibir "chamado criado".
-- Sem `DATABASE_URL`, manter painel existente acessível, mas bloquear novas submissões com mensagem de configuração, sem simular sucesso ou salvar no navegador.
-- Não gerar disparos em massa não solicitados, nem links sem expiração.
+## 6. Dois objetos operacionais separados
 
-## 8. Interfaces e estados
-- Navegação: link principal **Solicitar ajuda** visível a todos, **Formulários** apenas para administração/compartilhamento e **Chamados** como fila.
-- Mobile-first: cards tocáveis >=44px, etapas curtas, teclado adequado, resumo do que será enviado e confirmação inequívoca.
-- Estados reais: carregando, vazio, sem autorização, link expirado/usado/revogado, conexão indisponível, envio em curso, erro recuperável e sucesso com protocolo.
-- Identidade visual: ST1 Connect já aprovado — azul-escuro, branco, laranja; fontes Outfit e DM Sans; preservar layout existente, evitar refatoração de módulos não relacionados.
-- Acessibilidade: labels visíveis, resumo de erros, foco ao mudar de etapa, leitores de tela, navegação por teclado e respeito a redução de movimento.
+### 6.1. Chamado executável pelo BI
 
-## 9. Critérios objetivos de aceite
-1. Um colaborador autenticado abre um dos nove modelos em até dois cliques; campos condicionais aparecem corretamente; envio produz protocolo compartilhado e visível por seu gestor.
-2. Administrador cria uma versão de formulário, publica e gera convite; formulário externo só abre com convite válido para aquela versão.
-3. Um convite de uso único não pode ser reutilizado, expirado nem revogado; validação no servidor.
-4. Formulário incompleto/inconsistente é rejeitado no frontend e backend; rejeição não gera chamado.
-5. Resposta concluída gera chamado e histórico de modo atômico; falha do banco não retorna sucesso.
-6. Solicitante vê apenas seus próprios registros; Supervisor visualiza fila autorizada; Técnico não consegue modificar modelos; Admin controla publicação e revogação.
-7. Sessões, tokens e segredos não são persistidos no frontend; testes negativos cobrem acesso por mudança manual de URL/API.
-8. Novos chamados e respostas persistem após atualizar, fechar navegador e abrir em outro dispositivo autorizado.
-9. Enviar via WhatsApp/e-mail abre a aplicação de destino corretamente, mas a UI **não informa "enviado"** sem confirmação do serviço.
-10. Suite atual de atendimento continua verde; testes adicionais cobrem convites, autorização, idempotência, roteamento e formulários; build do Vercel `READY` e verificação funcional em produção antes de divulgar links.
+Criar **BI Ticket** com protocolo único, solicitante autenticado, versão do formulário, respostas, impacto, equipe BI, responsável após triagem, prioridade confirmada, status operacional (**Novo → Em atendimento → Pendente → Resolvido → Fechado**) e eventos auditáveis. SLA de execução somente quando aprovado pelo responsável do BI. O solicitante vê apenas seus chamados; perfil Supervisor/Admin acompanha a fila autorizada.
 
-## 10. Ordem da implementação
-**Fase A — dados e segurança (bloqueante):** provisionamento aprovado do Postgres, migrações, compartilhamento de tickets e autenticação de endpoints. Não abrir recursos públicos antes da validação.
+### 6.2. Encaminhamento para outra área
 
-**Fase B — formulários internos:** biblioteca e construtor, nove modelos iniciais, submissão compartilhada, fila e permissões.
+Criar **Registro de Encaminhamento** com protocolo único, solicitante, assunto, área sugerida, destino confirmado, canal, conteúdo encaminhado (minimizado), eventos e referências externas. **Não é ticket executável do BI e não recebe SLA de resolução BI.**
 
-**Fase C — externos controlados:** convites de uso único, verificação server-side, submissão externa, cópia/WhatsApp/e-mail, revogação, auditoria e QA de abuso.
+Estados:
+1. **Recebido para triagem** — registrado; escopo/destino ainda em avaliação.
+2. **Aguardando encaminhamento** — fora de escopo confirmado; envio agendado ou dependente de confirmação.
+3. **Encaminhamento em processamento** — tentativa de entrega registrada.
+4. **Encaminhado** — API do canal ou SMTP/provedor aceitou a mensagem/card; comprovante técnico anexado. Não prova leitura/aceite humano.
+5. **Recebimento confirmado** — confirmação explícita da área ou evento de integração que realmente represente aceitação; e-mail entregue não é prova de aceite.
+6. **Falha no encaminhamento** — entregas repetidas falharam ou não há destino válido; responsável de triagem recebe alerta para ação manual.
+7. **Encaminhamento cancelado** — solicitante ou administrador cancela antes de envio, registrando motivo.
 
-**Fase D — operação real:** validação de roteamento/SLA e nomes de equipes com a liderança ST1, testes de ponta a ponta, monitoramento de falhas, treinamento e publicação.
+"Sem destino confirmado" é sinal de bloqueio dentro de **Recebido para triagem**, não um falso encaminhamento. Não marcar **Resolvido** pelo simples ato de redirecionar. Encerrar o acompanhamento do BI após comprovar entrega ao canal canônico e, quando disponível, aceite; resolução final fica na ferramenta da área proprietária. Manter no ST1 Connect registro e link externo para consulta.
 
-### Limites do primeiro lançamento
-Não incluir: integração automática com Kommo/GLPI/IXC, disparo automático para WhatsApp, automações externas sem provedor, anexos ilimitados, formulários públicos abertos por padrão, nem registros fictícios expostos como chamados reais. Esses itens são evoluções futuras com autorização e escopo próprios.
+## 7. Notificação ao solicitante no sistema e por e-mail
+
+### 7.1. Mensagens em tela
+
+- Após enviar, mostrar classificação, protocolo, área provável e motivo.
+- Em **Minhas solicitações**, exibir timeline: registrada, classificação, enviada para qual canal, falha/reprocessamento, recebimento confirmado (somente com evidência), e orientação de continuidade.
+- Ícone de notificações e caixa interna de mensagens de sistema: **encaminhamento iniciado**, **encaminhamento confirmado**, **falha que exige ação** e **alteração importante de destino**.
+- Notificação e-mail deve espelhar uma mudança material; não enviar sequência redundante por cada retry técnico.
+
+### 7.2. E-mail para quem solicitou
+
+Destinatário: **e-mail vinculado ao login e validado pelo backend**; nunca usar o e-mail de outra pessoa inserido em campo livre. Para convidado externo, usar contato associado a convite verificado e política de consentimento/retenção.
+
+Mensagem padronizada e objetiva com:
+- Número e data da solicitação;
+- Título/assunto e breve resumo aprovado;
+- Explicação neutra de por que o pedido não é tratado pelo Squad de BI (quando aplicável);
+- Área/canal responsável identificado, sem inventar pessoa;
+- **Situação real**: em triagem, aguardando envio, encaminhado, recebimento confirmado ou falha;
+- Instrução e link para acompanhamento no ST1 Connect, limitado ao solicitante;
+- Referência externa apenas quando disponível e autorizada.
+
+Modelo de conteúdo do e-mail:
+
+**Assunto:** ST1 Connect | Solicitação ST1-xxxx encaminhada ao setor responsável
+
+"Recebemos sua solicitação sobre [assunto]. Ela foi classificada como responsabilidade de [área] porque [justificativa curta]. Encaminhamos as informações para [canal confirmado] em [data/hora]. **Situação: Encaminhado — aguardando confirmação de recebimento.** Protocolo: [id]. Para acompanhar ou solicitar revisão da classificação, acesse [link privado]."
+
+Se o conector falhar, o e-mail e a tela devem dizer **"Aguardando encaminhamento"** ou **"Falha no envio"**, jamais fingir que outra equipe recebeu.
+
+### 7.3. E-mail não é disparado pelo frontend
+
+Usar **provedor transacional conectado ao servidor**, com domínio remetente ST1 verificado, SPF/DKIM/DMARC e endereço de resposta institucional. Gmail do usuário não é equivalente a conector transacional da aplicação e não deve servir como envio automático permanente sem configuração corporativa aprovada. Registrar ID, timestamp, destino e estado técnico do provedor, sem armazenar segredos ou corpo completo em logs.
+
+## 8. Entrega ao canal correto, com mensagem estruturada
+
+Um **adaptador por canal** implementa a mesma interface lógica: validar destino → criar entrega idempotente → devolver referência externa e resultado → atualizar status técnico. Prioridade inicial de opções:
+
+1. **Trello:** criar card no quadro/lista **canônicos da área**, com título e descrição padronizados; opcionalmente atribuir DRI se a identidade estiver confirmada. Salvar card ID e URL. Falha de autorização/quadros suspende encaminhamento e aciona triagem; não criar card substituto em quadro genérico.
+2. **E-mail setorial:** enviar para endereço institucional allowlist, com resumo, protocolo e acesso seguro às respostas completas; rastrear aceite do provedor; recebimento humano exige confirmação explícita.
+3. **Webhook interno aprovado:** POST assinado em endpoint HTTPS previamente cadastrado, com esquema de payload versionado e idempotency key; bloquear hosts privados, redirects e destinos arbitrários para mitigar SSRF. Não considerar apenas HTTP 200 como confirmação de execução sem contrato de ACK.
+4. **Manual assistido:** mostrar mensagem pronta, botão de copiar, canal correto e checklist; somente marcar encaminhado mediante confirmação do operador e evidência anexada ao registro. Não simular envio.
+
+**Conteúdo mínimo enviado à área:** protocolo, solicitante e contato corporativo (quando permitido), área solicitante, assunto, tipo, objetivo, impacto, urgência declarada, respostas relevantes do formulário, data/hora, justificativa de direcionamento, anexos por link privado autorizado e URL de referência. O canal não recebe credenciais, tokens ou dados de outros chamados. Para e-mail, preferir resumo + link autenticado a transcrição indiscriminada de dados sensíveis.
+
+**Estrutura do card/assunto:** "[ST1 CONNECT] [TIPO] — [RESUMO] | [PROTOCOLO]". Texto deve ser factual e colaborativo: "Solicitação encaminhada ao time responsável para avaliação", não "vocês têm que resolver" ou atribuição de culpa.
+
+O ST1 Connect mantém a fonte canônica da **triagem e prova do encaminhamento**. O Trello da área é a fonte canônica da execução da demanda. Quando houver retorno pelo canal, espelhar somente referências/status validados, sem atualizar múltiplos sistemas por suposição.
+
+### 8.1. Política de entrega e tratamento de falha
+
+- Persistir solicitação e eventos de **outbox** na mesma transação no PostgreSQL; processamento assíncrono por worker/job server-side para e-mails e conectores.
+- **Não executar envio no corpo do request antes do commit**; cliente recebe protocolo e estado de entrega pendente, não falso sucesso.
+- Cada envio possui chave idempotente por registro, destino, evento e versão, evitando duplicação em retries.
+- Retries com backoff e limite configurável; após esgotar, fila de erro, notificação ao responsável pela triagem e ação **Reenviar** ou **Alterar destino**. Sucesso de um canal não deve ser apagado pela falha de outro.
+- Manter eventos **e-mail aceito pelo provedor**, **canal externo aceitou a criação**, **área confirmou recebimento** separados.
+- Ao alterar destino, cancelar tentativas futuras da rota antiga e registrar quem autorizou a mudança.
+- Sem provedor de e-mail ou canal configurado, não habilitar **encaminhamento automático**. Mostrar "canal não configurado" e pendência real. O solicitante continua informado no próprio sistema.
+
+## 9. Administração e acesso
+
+Papéis existentes reaproveitados, com restrições explícitas no **servidor**:
+
+| Perfil | Pode fazer |
+| --- | --- |
+| **Administrador** | Gerencia usuários, formulários, escopo BI, regras de roteamento, canais/credenciais indiretas, logs e auditoria; pode autorizar reenvio e revisão |
+| **Supervisor (BI)** | Acompanha fila BI, classifica exceções, gera convites autorizados, solicita/revisa encaminhamentos de outras áreas; não visualiza segredos de conectores |
+| **Técnico (BI)** | Executa tickets BI atribuídos, comenta tecnicamente, sinaliza fora de escopo para revisão; não publica formulário nem altera destino canônico |
+| **Solicitante** | Cria demanda, vê o próprio protocolo, estado e mensagens, solicita revisão da classificação; não acessa fila de outras pessoas |
+| **Convidado com link** | Preenche somente formulário vinculado ao convite; não acessa painel, diretório interno, dados de outros chamados ou histórico geral |
+
+Administradores controlam um **Diretório de Áreas e Canais**, versionado, com prévia da mensagem e **teste de configuração sem produção de card real** quando suportado pelo conector. Alterar regras de escopo ou de destino exige trilha de autoria/data e não afeta envios concluídos.
+
+A experiência deve ser acessível e responsiva, mantendo identidade ST1 Connect (nav lateral escura, laranja como ação primária, DM Sans/Outfit). Novos espaços da navegação:
+- **Solicitar ao BI** — portal de formulários para solicitantes.
+- **Meus pedidos** — tickets BI e encaminhamentos, em linhas visualmente diferenciadas.
+- **Fila BI** — somente chamados executáveis do Squad.
+- **Triagem e encaminhamentos** — exceções, bloqueios e situação dos envios.
+- **Formulários** — editor de modelos para Admin.
+- **Áreas e canais** — diretório/configurações para Admin.
+
+Evitar lista de oito departamentos como se fossem equipes subordinadas ao Squad de BI.
+
+## 10. Persistência e arquitetura
+
+**Requisito bloqueante:** PostgreSQL gerenciado conectado às Vercel Functions por credencial privada. Não contratar serviço/plano pago sem análise de custo e autorização. Blob privado pode armazenar arquivos autorizados, não substituir o banco transacional.
+
+Conjuntos de dados:
+- **Identidade**: mapear IDs autenticados em Blob para usuários no banco; evitar dois cadastros divergentes.
+- **Formulários**: templates, versões imutáveis, campos, condicionais, visibilidade e permissão interna/externa.
+- **Escopo e roteamento**: áreas, regras versionadas, responsáveis institucionais, canais e status de validação do destino; segredos em env/secret manager, não em tabelas legíveis.
+- **Solicitações**: submissões, respostas, autor, protocolo e decisão de triagem.
+- **BI tickets**: execução BI, eventos, prioridades, SLAs validados, responsáveis e encerramento.
+- **Encaminhamentos**: classificação, justificativa, canal, referência externa, estado, tentativas, aceite, reenvio e cancelamento.
+- **Comunicações**: notificação interna, outbox, tentativas, provedor, eventos e confirmações.
+- **Segurança**: convites hash/expiração/uso, regras de acesso, auditoria e limites de requisição.
+- **Anexos**: referência a arquivos privados permitidos, autenticação e validade de acesso.
+
+Endpoints segregados por domínio:
+- **/api/forms/**: catálogo, modelos, prévia e publicação.
+- **/api/submissions/**: submissão e decisão de escopo, validação e protocolo.
+- **/api/bi-tickets/**: execução e leitura com autorização server-side.
+- **/api/referrals/**: registrar e acompanhar encaminhamentos, cancelamentos e confirmações.
+- **/api/routing/**: regras e canais, operações de Admin; dados sensíveis nunca expostos.
+- **/api/notifications/**: caixa interna e preferências permitidas.
+- **/api/public/**: convites externos verificados, submissão com rate limit e proteção antiabuso.
+
+Usar cookies HTTP-only e verificação server-side das contas e permissões existentes; não confiar em role ou userId fornecidos pelo cliente. Validar vínculo do solicitante antes de expor qualquer resposta, log, comunicação ou anexo.
+
+### Exigências de dados e compliance
+
+Coletar somente dados necessários, validar esquema, tamanho de mensagens e tipos de arquivo. Sanitizar saídas, prevenir CSRF, SSRF, enumeração de protocolos, abuso de links, vazamento de segredo e duplo envio. Links de convidados devem ter expiração e ser revogáveis. Para compartilhamento com outra área, mostrar exatamente quais informações serão transmitidas; registros não autorizados ou de sensibilidade elevada exigem revisão humana.
+
+Não sincronizar automaticamente dados fictícios atuais; oferecer importação com revisão e aprovação expressa, preservando histórico do navegador. Na ausência de banco ou conector, impedir declarações de sucesso e não mascarar falhas com localStorage.
+
+## 11. Indicadores separados para a gestão
+
+**BI operacional:** novos tickets BI, backlog, tempo de primeira resposta, tempo de atendimento, cumprimento de SLA validado, retrabalho e demanda por tipo/área.
+
+**Triagem interáreas:** solicitações fora do escopo, distribuição por área, % classificadas corretamente após revisão, tempo até encaminhamento técnico, % de canais que aceitaram a entrega, % de áreas que confirmaram recebimento, falhas/reprocessamentos e destinos sem configuração.
+
+Não considerar encaminhamento como **entrega do BI**, nem contar cumprimento de SLA da área receptora como SLA do Squad de BI. Dashboard deve distinguir "entrega ao canal" de "aceite da área".
+
+## 12. Critérios de aceite e testes obrigatórios
+
+1. **Escopo:** oito formulários principais aparecem no catálogo BI; solicitação de CRM funcional/Marketing/Redes é classificada fora do escopo sem entrar na fila executável BI.
+2. **Híbridos:** divergência de métrica originada no dashboard aparece para triagem BI; mudança funcional do Kommo fica com CRM, com dependência documentada quando aplicável.
+3. **Identidade:** usuário autenticado vê seus próprios registros e recebe avisos somente no e-mail de seu login; mudar parâmetro da API não permite receber notificações de outra conta.
+4. **Mensagem no sistema:** cada novo pedido recebe protocolo e status persistente; encaminhamentos externos mostram destino, estado real e histórico mesmo após abrir de outro dispositivo autorizado.
+5. **Integração configurável:** Admin configura ao menos um destino Trello e um e-mail setorial homologados; cada modelo/regra resolve para o destino correto, sem usar quadro genérico.
+6. **Registro na área:** conector bem-sucedido gera um card/mensagem com identificador, solicitante, conteúdo necessário, data/hora, impacto, justificativa e referência segura. O evento contém ID externo.
+7. **Notificação ao solicitante:** após aceite pelo provedor, há mensagem in-app e e-mail correspondente com protocolo, área, justificativa e situação; sem afirmar recebimento humano.
+8. **Falha:** conector indisponível mantém estado de falha/pendência, permite retry idempotente, notifica triagem e não marca recebido/resolvido.
+9. **Confirmação do receptor:** só muda para **Recebimento confirmado** após evento explícito confiável ou confirmação manual auditada. Envio por e-mail sozinho não atende esse critério.
+10. **Convite externo:** token revogado, expirado ou já utilizado bloqueia acesso; convidado não vê dados internos nem recebe e-mail em endereço não verificado.
+11. **Integridade:** envio cria solicitação e outbox em transação; formulário incompleto não gera protocolo de sucesso; reenvios não criam duas demandas para a mesma solicitação.
+12. **Permissões:** Solicitante não vê solicitações de outros, Técnico não altera regras ou templates, Supervisor não visualiza segredos; autorização aplicada em API e não só no menu.
+13. **Métricas:** relatórios isolam chamados executáveis BI de encaminhamentos e não contam "encaminhado" como "resolvido".
+14. **UI e release:** testes unitários/integrados e E2E dos dois caminhos, responsividade móvel, acessibilidade, regressão dos fluxos existentes, build Vercel READY e teste com destinos de homologação antes do go-live.
+15. **Não configuração:** sem PostgreSQL, e-mail transacional ou canal oficial, a interface explica a indisponibilidade e não anuncia entrega externa bem-sucedida.
+
+## 13. Etapas de execução e limites
+
+**Fase A — infraestrutura e identidade (bloqueante).** Aprovar e conectar banco transacional; implementar persistência e autorização por solicitante; tabela de regras/áreas, outbox, eventos auditáveis e planejamento de integrações. Validar remetente institucional e autorização de Trello/e-mail/webhook.
+
+**Fase B — portal BI.** Implementar catálogo enxuto e oito formulários inteligentes, fila BI e meus pedidos. Alinhar SLA e time proprietário com a liderança do Squad antes de habilitar execução operacional.
+
+**Fase C — triagem e canais.** Implementar classificação com confirmação, diretório de destinos, triagem de exceções, conectores aprovados, retries, e-mails e notificações internas. Testar canal a canal com destinos de homologação e redirecionamento auditável.
+
+**Fase D — convites externos e publicação.** Links controlados, limites, confirmação de identidade quando necessário, QA de segurança e aceite operacional com solicitação externa simulada; somente então liberar distribuição de links.
+
+**Fora do escopo inicial:** virar ferramenta corporativa de todas as áreas; atendimento completo das outras equipes dentro do Connect; integração funcional com Kommo/GLPI/IXC; automação de WhatsApp sem API autorizada; publicar links genéricos sem controle; inventar SLAs, responsáveis, e-mails ou quadros externos; migração automática dos tickets fictícios.
+
+**Pendências de configuração, não impedimentos à especificação:** confirmar proprietários e destinos oficiais por área na fonte operacional vigente, autorizar provedores/credenciais de integração, configurar banco e definir política de segurança e retenção. Até isso existir, automações devem permanecer desligadas, com interface de configuração e estados de indisponibilidade.
+
+---
+**Histórico da decisão:** o documento original descrevia um helpdesk generalista com nove modelos de atendimento. A revisão aprovada substitui essa tese por **central exclusiva do Squad de BI + roteador de exceções interáreas**, com canal configurável por área, comunicação no sistema e e-mail para o solicitante e comprovação técnica de encaminhamento separada de aceite humano.
