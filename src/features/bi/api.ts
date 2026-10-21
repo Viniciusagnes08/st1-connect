@@ -1,4 +1,4 @@
-import type { BiQueueItem, BiSelf, BiState, OwnRequest, SquadMember, TicketDetail } from './types';
+import type { BiQueueItem, BiMembership, BiSelf, BiState, OwnRequest, SquadMember, TicketDetail } from './types';
 
 export class BiApiError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = 'BiApiError'; }
