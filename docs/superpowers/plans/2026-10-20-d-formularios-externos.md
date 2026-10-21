@@ -21,6 +21,7 @@
 | `db/migrations/004_public_invites.sql` | controles de acesso e uso do convite |
 | `api/_lib/invitations.js` | tokens, hashing, validade, expiração, revogação |
 | `api/_lib/invitations.test.js` | testes de single-use e brute-force |
+| `api/_lib/otp.js` | helper já criado na Fase C; reutilizar, sem duplicação |
 | `api/_lib/public-form-service.js` | formulário publicado e submissão do convidado |
 | `api/invites.js` | criação/listagem/revogação para equipe autorizada |
 | `api/public/form.js` | pré-visualização permitida pelo token |
@@ -201,41 +202,24 @@ O handler deve ser `POST`, limitar corpo, aplicar limitação por IP/token e nã
 
 ## Task 5: Verificação do e-mail de destino com OTP
 
-**Files:** Create `api/public/send-code.js`, `api/public/verify-code.js`, `api/_lib/otp.js`, `api/_lib/otp.test.js`. Modify `api/_lib/channels/email.js`.
+**Files:** Create `api/public/send-code.js`, `api/public/verify-code.js` e `api/_lib/public-otp.test.js`. Reuse `api/_lib/otp.js` e `api/_lib/channels/email.js` da Fase C, sem duplicar implementação.
 
-- [ ] **Step 1: teste de OTP, expiração e limite.**
+- [ ] **Step 1: teste de OTP específico para convite externo, reutilizando o helper da Fase C.**
 
 ~~~js
-// api/_lib/otp.test.js
+// api/_lib/public-otp.test.js
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createOtp, verifyOtp } from './otp.js';
-test('OTP certo autentica e OTP errado falha', () => {
-  const generated = createOtp('a-secret-pepper');
-  assert.equal(verifyOtp(generated.code,generated.digest,'a-secret-pepper'),true);
-  assert.equal(verifyOtp('000000',generated.digest,'a-secret-pepper') &&
-               verifyOtp('999999',generated.digest,'a-secret-pepper'),false);
+test('convite aceita apenas o código correto', () => {
+  const generated = createOtp('segredo-test-only');
+  const wrong = generated.code === '000000' ? '000001' : '000000';
+  assert.equal(verifyOtp(generated.code,generated.digest,'segredo-test-only'),true);
+  assert.equal(verifyOtp(wrong,generated.digest,'segredo-test-only'),false);
 });
 ~~~
 
-- [ ] **Step 2: HMAC para código de baixa entropia.**
-
-~~~js
-// api/_lib/otp.js
-import { randomInt, createHmac, timingSafeEqual } from 'node:crypto';
-function digest(code,secret) {
-  return createHmac('sha256',secret).update(String(code)).digest('hex');
-}
-export function createOtp(secret) {
-  const code=String(randomInt(0,1000000)).padStart(6,'0');
-  return {code,digest:digest(code,secret)};
-}
-export function verifyOtp(code,expected,secret) {
-  if (!/^\d{6}$/.test(code) || !expected) return false;
-  const a=Buffer.from(digest(code,secret)), b=Buffer.from(expected);
-  return a.length===b.length && timingSafeEqual(a,b);
-}
-~~~
+- [ ] **Step 2: reutilizar a rotina única.** A Fase C já definiu `createOtp(pepper)` e `verifyOtp(code,digest,pepper)` em `api/_lib/otp.js`. O fluxo público chama essas funções com segredo `ST1_INVITE_PEPPER` configurado apenas no servidor. Não criar uma segunda implementação criptográfica nem guardar o código bruto; acrescentar apenas testes de limites, expiração e convite errado.
 
 - [ ] **Step 3: enviar código somente ao e-mail predefinido no convite.** `POST /api/public/send-code` recebe token e slug, valida convite, usa `recipient_email` do banco, jamais endereço do request. Gerar OTP, salvar HMAC com `ST1_INVITE_PEPPER` e validade 10 minutos, máximo 5 tentativas e intervalo mínimo de 60s por convite. Enviar via `sendEmail` da Fase C; aceitar request apenas se o provedor aceitar, e marcar falha quando indisponível. Logs sem código, token, e-mail completo ou segredo.
 - [ ] **Step 4: comprovar e gerar grant curto.** `POST /api/public/verify-code` confirma HMAC e prazo, incrementa `otp_attempts` em erro, invalida o OTP no sucesso e cria grant aleatório (32 bytes) com hash salvo em `public_access_grants`, validade 15min. Entregar grant como cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/public; Max-Age=900`. Em `submit` exigir cookie/grant válido para aquele convite; recusar grant usado/expirado e limpar cookie após submissão.
