@@ -41,6 +41,8 @@ export default async function handler(req, res) {
       const account=(await loadDirectory()).find(p=>p.id===body.userId);
       if(!account || (body.active && !account.active))
         return res.status(404).json({error:'Conta ativa não encontrada.'});
+      if(body.active && !['Administrador','Supervisor','Técnico'].includes(account.role))
+        return res.status(400).json({error:'Altere o perfil para Técnico, Supervisor ou Administrador antes de autorizar no BI.'});
       const result=await inTransaction(async tx=>{
         const assigned=await tx.query(
           `INSERT INTO bi_memberships(user_id,bi_role,active,granted_by)
