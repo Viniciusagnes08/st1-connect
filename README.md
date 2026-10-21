@@ -20,7 +20,22 @@ Esta é uma **demonstração funcional do painel e dos fluxos**, identificada de
 
 Os dados são armazenados no **localStorage do navegador**, sem envio a um servidor. Alterações ficam disponíveis nesse mesmo navegador e origem; não são compartilhadas entre dispositivos ou colaboradores. Limpar os dados do navegador remove os registros locais. A exportação CSV exporta chamados, não representa um backup completo de configurações e ativos.
 
-Não há autenticação, autorização de usuários, banco de dados central, anexos, notificações por e-mail/WhatsApp ou integração com GLPI, Kommo, IXC ou ST1 Sales. O perfil “Gestão Connect” é demonstrativo. Os avisos de prazo são calculados na interface enquanto o aplicativo está aberto.
+Há **autenticação de contas e sessões no servidor**, com cadastro persistido em Vercel Blob privado, perfis (Administrador, Supervisor, Técnico e Solicitante), gerenciamento de acessos pelo administrador, alteração de senha e bloqueio temporário após tentativas de senha incorreta. A interface limita os módulos por perfil. **Os chamados e ativos continuam em localStorage e as permissões sobre esses dados de demonstração são apenas de interface, não uma autorização sobre dados persistidos no servidor.** Portanto, não utilize a versão para informações internas confidenciais ou como sistema multiusuário de produção. Não há banco de dados central dos chamados, anexos, notificações por e-mail/WhatsApp ou integração com GLPI, Kommo, IXC ou ST1 Sales. Os avisos de prazo são calculados na interface enquanto o aplicativo está aberto.
+
+## Login e ativação inicial
+
+A primeira visita ao endereço do ST1 Connect abre o formulário de ativação. O primeiro administrador informa **nome, e-mail, senha forte com pelo menos 12 caracteres (letras e números)** e o código disponível em **Vercel → Project → Settings → Environment Variables → ST1_SETUP_TOKEN**. Esse valor é secreto e **não deve ser publicado no GitHub, enviado por mensagem ou colocado em variáveis VITE_**. Apenas o primeiro cadastro usa esse código; em seguida, o administrador cria as contas em **Meu acesso → Usuários e permissões**.
+
+Os perfis previstos nesta versão são:
+
+- **Administrador:** todos os módulos e gestão de contas.
+- **Supervisor:** painel geral, chamados, ativos, equipes e relatórios.
+- **Técnico:** painel geral, chamados, ativos e conhecimento.
+- **Solicitante:** abertura de chamado, leitura dos próprios chamados criados nesta instância do navegador e base de conhecimento.
+
+Para trocar a senha, entre em **Meu acesso → Minha conta**. Em caso de perda da senha, solicite ao administrador uma redefinição; não existe recuperação por e-mail. **Não use o recurso para armazenar senhas de colaboradores em chamados.**
+
+Configuração em produção: **ST1_AUTH_SECRET** (chave privada da sessão), **ST1_SETUP_TOKEN** (código de ativação) e **BLOB_READ_WRITE_TOKEN** (fornecido pelo Blob privado). O armazenamento privado não deve ser tornado público. O handler em `api/auth.js` verifica credenciais, sessão, papéis e alterações de usuários no servidor e devolve cookies HTTP-only, Secure e SameSite=Strict. Alterações no documento de contas utilizam ETag/if-match para minimizar conflitos de escrita.
 
 ## Execução local
 
@@ -44,6 +59,8 @@ npm run preview
 ```text
 src/
   App.tsx             Navegação, painel, chamados, criação e atendimento
+  AuthGate.tsx        Login, ativação, gestão de contas e troca de senha
+  auth.css            Identidade visual e responsividade do login
   SecondaryPages.tsx  Ativos, conhecimento, equipes, relatórios e configurações
   domain.ts           Tipos, demonstração, validação, SLA, transições e CSV
   domain.test.ts      Testes de regras de atendimento e exportação
@@ -52,6 +69,7 @@ src/
   main.tsx            Inicialização e fontes locais
 public/
   favicon.svg         Identidade do aplicativo
+api/auth.js           Sessões e usuários armazenados no servidor
 vercel.json           Compilação, roteamento e cabeçalhos
 ```
 
@@ -65,13 +83,13 @@ O painel utiliza o fuso de Fortaleza. Indicadores da fila mostram a posição at
 
 ## Publicação no Vercel
 
-O projeto usa o preset Vite, comando `npm run build` e diretório de saída `dist`. A configuração necessária está versionada. Não são necessárias variáveis de ambiente para esta demonstração.
+O projeto usa o preset Vite, comando `npm run build` e diretório de saída `dist`. A configuração necessária está versionada. A autenticação agora **exige as variáveis de ambiente descritas acima**. O aplicativo não inicia o login caso elas estejam ausentes.
 
 A integração com o GitHub permite novas publicações a partir de alterações na branch de produção do repositório.
 
 ## Evolução para uso operacional
 
-A próxima etapa técnica é conectar uma API e um banco de dados persistente, implementar autenticação e perfis de acesso e substituir os exemplos por cadastros aprovados. A arquitetura mantém as regras de domínio separadas dos componentes para apoiar essa evolução.
+A próxima etapa técnica é conectar a API de chamados e um banco de dados persistente com autorização por registro, substituir os dados demonstrativos e vincular os solicitantes aos seus chamados. O controle de papéis da navegação não substitui o controle de acesso a dados em um backend. A arquitetura mantém as regras de domínio separadas dos componentes para apoiar essa evolução.
 
 Depois disso, podem entrar catálogo por área, aprovações, anexos, notificações, calendário de atendimento, auditoria no servidor e integrações com os sistemas da ST1. Nenhuma dessas conexões é simulada como ativa nesta versão.
 
