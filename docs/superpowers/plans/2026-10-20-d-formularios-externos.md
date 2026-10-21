@@ -135,7 +135,7 @@ export function assertInvitedEmail(email) {
 
 **Files:** Create `api/invites.js`, `api/_lib/invites-admin.test.js`. Modify `src/features/forms/FormBuilder.tsx`.
 
-- [ ] **Step 1: testes dos papéis.** `Administrador` pode ativar compartilhamento externo de um modelo publicado; `Supervisor` pode criar convite individual para modelo previamente habilitado; Técnico/Solicitante recebem 403 para criar/revogar/listar convites.
+- [ ] **Step 1: testes dos papéis.** `Administrador` **com membership BI ativo** pode ativar compartilhamento externo de um modelo publicado; `Supervisor` **com membership BI ativo** pode criar convite individual para modelo previamente habilitado; Técnico/Solicitante recebem 403 para criar/revogar/listar convites.
 - [ ] **Step 2: criar convite sem devolver segredos em leituras futuras.**
 
 ~~~js
@@ -157,7 +157,7 @@ return res.status(201).json({id:inserted.rows[0].id,link,expiresAt:inserted.rows
 
 A string do domínio deve vir da configuração de origem institucional validada pelo servidor (ex.: `PUBLIC_BASE_URL`), nunca de `Host` arbitrário. Usar literal acima somente como exemplo de ambiente ST1 Connect. Link visível **uma vez** na resposta ao criador, não recuperável depois; no banco fica hash.
 
-- [ ] **Step 3: revogação.** POST `action:'revoke',inviteId` valida Admin/Supervisor emissor, grava `revoked_at=now()` com evento de auditoria, impede novas submissões; reabrir o link deve mostrar "Convite revogado" sem detalhes privados. GET lista somente ID, e-mail mascarado, status, expiração e usos, jamais token bruto.
+- [ ] **Step 3: revogação.** POST `action:'revoke',inviteId` valida Admin/Supervisor com membership BI ativo, autoria ou responsabilidade na gestão do convite, grava `revoked_at=now()` com evento de auditoria, impede novas submissões; reabrir o link deve mostrar "Convite revogado" sem detalhes privados. GET lista somente ID, e-mail mascarado, status, expiração e usos, jamais token bruto.
 - [ ] **Step 4: QA e commit.** Criação de convite para template desativado → 409; criação fora da role → 403; mesmo slug válido cria tokens distintos; URL codificada e sem segredo em analytics. Commit: `feat(invites): issue and revoke single-use links`.
 
 ## Task 4: Formulário público fora do login e sem vazamento por URL
