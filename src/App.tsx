@@ -3,10 +3,10 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BookOpen,
   CalendarDays, Check, CheckCheck, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronsUpDown, CircleHelp, Clock3, Command,
-  Ellipsis, Headphones, LayoutDashboard, ListFilter, List, LoaderCircle,
+  ChevronRight, CircleHelp, Clock3, Command,
+  Headphones, LayoutDashboard, ListFilter, List, LoaderCircle,
   Menu, MessageSquare, Monitor, Network, PanelTop, Plus, Search, Send,
-  Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Ticket as TicketIcon,
+  Settings2, ShieldCheck, SlidersHorizontal, Ticket as TicketIcon,
   TrendingUp, TriangleAlert, Users, X, Zap,
 } from 'lucide-react';
 import {
@@ -145,28 +145,49 @@ export default function App({ user, onLogout }: { user: Account; onLogout: () =>
     <a className="skip-link" href="#main-content" onClick={e => { e.preventDefault(); const main = document.getElementById('main-content'); main?.focus(); main?.scrollIntoView({ block: 'start' }); }}>Pular para o conteúdo</a>
     {mobileOpen && <button className="sidebar-backdrop" aria-label="Fechar navegação" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`} aria-label="Navegação principal">
-      <a className="brand" href="#/overview" onClick={() => go('overview')} aria-label="ST1 Connect, início">
-        <span className="brand-st1">st<span>1</span><i /></span><span className="brand-divider" /><span className="brand-connect">connect<span>CENTRAL DE SERVIÇOS</span></span>
-      </a>
-      <button className="workspace-switch" onClick={() => setProfileOpen(true)}><span className="workspace-logo"><Network size={19} /></span><span><b>{data.settings.workspace}</b><small>Workspace da equipe</small></span><ChevronsUpDown size={15} /></button>
-      <div className="nav-section-label">SQUAD DE BI</div>
-      <nav><a href="#/bi" onClick={() => go('bi')} className={`nav-item ${safePage === 'bi' ? 'active' : ''}`} aria-current={safePage === 'bi' ? 'page' : undefined}>
-        <PanelTop size={19} /><span>Central de BI</span><b className="nav-count">NOVO</b>
-      </a></nav>
-      <div className="nav-section-label">DEMONSTRAÇÃO</div>
-      <nav>
-        {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).filter(permitted).map(p => {
-          const Icon = PAGE_INFO[p].icon;
-          return <a key={p} href={`#/${p}`} onClick={() => { if (p === 'tickets') showTickets(); else go(p); }} className={`nav-item ${page === p ? 'active' : ''}`} aria-current={page === p ? 'page' : undefined}>
-            <Icon size={19} /><span>{p === 'tickets' ? 'Chamados' : p === 'assets' ? 'Ativos' : PAGE_INFO[p].title}</span>{p === 'tickets' && <b className="nav-count">{data.tickets.filter(isOpen).length}</b>}
-          </a>;
-        })}
+      <div className="sidebar-header">
+        <a className="brand" href="#/bi" onClick={() => go('bi')} aria-label="ST1 Connect, central de BI">
+          <span className="brand-st1">st<span>1</span><i /></span><span className="brand-divider" /><span className="brand-connect">connect<span>CENTRAL DE SERVIÇOS</span></span>
+        </a>
+        <button type="button" className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Fechar menu lateral"><X size={19}/></button>
+      </div>
+      <div className="workspace-switch" aria-label={`Área de trabalho: ${data.settings.workspace}`}>
+        <span className="workspace-logo"><Network size={18} /></span>
+        <span><b>{data.settings.workspace}</b><small>Central da equipe</small></span>
+        <span className="workspace-online" aria-hidden="true" />
+      </div>
+      <nav className="sidebar-nav-scroll" aria-label="Seções do ST1 Connect" tabIndex={0}>
+        <div className="sidebar-nav-group sidebar-nav-highlight">
+          <div className="nav-section-label">SQUAD DE BI</div>
+          <a href="#/bi" onClick={() => go('bi')} className={`nav-item ${safePage === 'bi' ? 'active' : ''}`} aria-current={safePage === 'bi' ? 'page' : undefined}>
+            <PanelTop size={19} /><span>Central de BI</span><b className="nav-count">NOVO</b>
+          </a>
+        </div>
+        {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).some(permitted) && <div className="sidebar-nav-group">
+          <div className="nav-section-label">DEMONSTRAÇÃO</div>
+          {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).filter(permitted).map(p => {
+            const Icon = PAGE_INFO[p].icon;
+            return <a key={p} href={`#/${p}`} onClick={() => { if (p === 'tickets') showTickets(); else go(p); }} className={`nav-item ${safePage === p ? 'active' : ''}`} aria-current={safePage === p ? 'page' : undefined}>
+              <Icon size={19} /><span>{p === 'tickets' ? 'Chamados' : p === 'assets' ? 'Ativos' : PAGE_INFO[p].title}</span>{p === 'tickets' && <b className="nav-count">{visibleTickets.filter(isOpen).length}</b>}
+            </a>;
+          })}
+        </div>}
+        {(['teams', 'reports', 'settings'] as Page[]).some(permitted) && <div className="sidebar-nav-group">
+          <div className="nav-section-label">GESTÃO</div>
+          {(['teams', 'reports', 'settings'] as Page[]).filter(permitted).map(p => {
+            const Icon = PAGE_INFO[p].icon;
+            return <a key={p} href={`#/${p}`} onClick={() => go(p)} className={`nav-item ${safePage === p ? 'active' : ''}`} aria-current={safePage === p ? 'page' : undefined}>
+              <Icon size={19} /><span>{PAGE_INFO[p].title}</span>
+            </a>;
+          })}
+        </div>}
       </nav>
-      <div className="nav-section-label management-label">GESTÃO</div>
-      <nav>{(['teams', 'reports', 'settings'] as Page[]).filter(permitted).map(p => { const Icon = PAGE_INFO[p].icon; return <a key={p} href={`#/${p}`} onClick={() => go(p)} className={`nav-item ${page === p ? 'active' : ''}`} aria-current={page === p ? 'page' : undefined}><Icon size={19} /><span>{PAGE_INFO[p].title}</span></a>; })}</nav>
       <div className="sidebar-bottom">
-        <div className="help-card"><div className="help-symbol"><Sparkles size={19} /></div><b>Conhecimento conecta.</b><p>Encontre orientações e resolva dúvidas com mais autonomia.</p><button onClick={() => go('knowledge')}>Explorar a base <ArrowUpRight size={15} /></button></div>
-        <button className="sidebar-profile" onClick={() => setProfileOpen(true)}><span className="avatar profile-avatar">{user.name.slice(0,2).toUpperCase()}</span><span><b>{user.name}</b><small>{user.role}</small></span><Ellipsis size={19} /></button>
+        <button className="sidebar-profile" onClick={() => setProfileOpen(true)} aria-label="Abrir meu perfil e configurações de acesso" title="Meu acesso">
+          <span className="avatar profile-avatar">{user.name.slice(0,2).toUpperCase()}</span>
+          <span><b>{user.name}</b><small>{user.role}</small></span>
+          <Settings2 size={17} />
+        </button>
       </div>
     </aside>
 
