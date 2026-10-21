@@ -204,8 +204,8 @@ export default function BIWorkspace({ user }: { user: User }) {
           <div className="bi-people">{accounts.map(person=><div className="bi-person" key={person.id}>
             <span className="bi-person-avatar">{person.name.slice(0,2).toUpperCase()}</span>
             <div className="bi-person-info"><b>{person.name}</b><small>{person.email}</small><span>{person.role}{!person.active?' · Conta desativada':''}</span></div>
-            <select aria-label={'Papel no BI de '+person.name} disabled={busy||!person.active} value={person.membership?.biRole||'analyst'} onChange={e=>void handleMember(person,e.target.value as 'manager'|'analyst',true)}><option value="analyst">Analista BI</option><option value="manager">Gestão BI</option></select>
-            <button type="button" disabled={busy||!person.active} className={person.membership?.active?'bi-secondary':'bi-primary'} onClick={()=>void handleMember(person,person.membership?.biRole||'analyst',!person.membership?.active)}>
+            <select aria-label={'Papel no BI de '+person.name} disabled={busy||!person.active||person.role==='Solicitante'} value={person.membership?.biRole||'analyst'} onChange={e=>void handleMember(person,e.target.value as 'manager'|'analyst',true)}><option value="analyst">Analista BI</option><option value="manager">Gestão BI</option></select>
+            <button type="button" disabled={busy||!person.active||person.role==='Solicitante'} className={person.membership?.active?'bi-secondary':'bi-primary'} onClick={()=>void handleMember(person,person.membership?.biRole||'analyst',!person.membership?.active)}>
               {person.membership?.active?'Remover do Squad':'Autorizar no BI'}
             </button>
           </div>)}</div>}
