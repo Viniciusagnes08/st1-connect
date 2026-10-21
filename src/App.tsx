@@ -3,10 +3,10 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, BookOpen,
   CalendarDays, Check, CheckCheck, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronsUpDown, CircleHelp, Clock3, Command,
-  Ellipsis, Headphones, LayoutDashboard, ListFilter, List, LoaderCircle,
+  ChevronRight, CircleHelp, Clock3, Command,
+  Headphones, LayoutDashboard, ListFilter, List, LoaderCircle,
   Menu, MessageSquare, Monitor, Network, PanelTop, Plus, Search, Send,
-  Settings2, ShieldCheck, SlidersHorizontal, Sparkles, Ticket as TicketIcon,
+  Settings2, ShieldCheck, SlidersHorizontal, Ticket as TicketIcon,
   TrendingUp, TriangleAlert, Users, X, Zap,
 } from 'lucide-react';
 import {
