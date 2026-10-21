@@ -100,7 +100,13 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const origin = req.headers.origin;
     const host = req.headers.host;
-    if (!origin || !host || new URL(origin).host !== host || !origin.startsWith('https://')) return error(res, 403, 'Origem não autorizada.');
+    let authorizedOrigin = false;
+    try {
+      const parsed = new URL(origin);
+      authorizedOrigin = typeof origin === 'string' && typeof host === 'string' &&
+        parsed.protocol === 'https:' && parsed.host === host;
+    } catch { /* Origem opaca ou inválida: recusar sem lançar erro interno. */ }
+    if (!authorizedOrigin) return error(res, 403, 'Origem não autorizada.');
     if (Number(req.headers['content-length'] || 0) > 16000) return error(res, 413, 'Requisição muito grande.');
   }
   try {
