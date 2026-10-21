@@ -1,12 +1,12 @@
 # Supabase para ST1 Connect | Preparação segura da Fase A
 
-**Situação:** a estrutura de código está preparada para Supabase Postgres, mas **ainda não existe projeto Supabase dedicado ao ST1 Connect, nem conexão configurada no Vercel**.
+**Situação em 21/10/2026:** projeto Supabase **ST1 Connect** criado com cobrança confirmada de **US$ 0/mês**, na região `sa-east-1`. Projeto ID `cxqoypwsqokkwcirugrg` ([abrir no Supabase](https://supabase.com/dashboard/project/cxqoypwsqokkwcirugrg)), status `ACTIVE_HEALTHY`. Migração `st1_connect_bi_foundation_private_schema` aplicada. **Ainda não foi configurada `DATABASE_URL` no Vercel**.
 
 ## Descoberta no Supabase (20/10/2026)
 
-A organização conectada ao Supabase está no **plano Free**. Já existe **ST1 Academy** ativo, que **não deve ser utilizado ou modificado para o Connect**, e outro projeto genérico inativo. Pela regra documentada do Supabase, o Free Plan permite até **2 projetos ativos** e projetos pausados não contam no limite. Em princípio, há uma vaga para um projeto novo dedicado ao Connect.
+A organização conectada continua no **plano Free**. O projeto **ST1 Connect** foi criado como segundo projeto ativo gratuito. O **ST1 Academy** continua ativo e o projeto genérico inativo permanece preservado; nenhum dos dois foi utilizado pelo Connect. O limite do Free Plan é de dois projetos ativos.
 
-**Pré-condição para criar:** autorização explícita da organização e confirmação de que a criação ficará no nível gratuito. Região recomendada para o Connect: `sa-east-1` (São Paulo). Nenhum projeto deve ser reutilizado ou reativado sem inspecionar seus dados e obter autorização.
+A criação foi autorizada pelo usuário somente com custo zero. O Supabase retornou a cotação `{type:'project',recurrence:'monthly',amount:0}` antes da criação. A primeira leitura verificou seis tabelas vazias em `st1_bi` e nenhuma tabela operacional em `public`. A consulta de segurança confirmou `anon_schema_access=false`, `authenticated_schema_access=false` e nenhum GRANT direto a esses papéis. **A listagem de tabelas sinalizou RLS desativado nas seis tabelas; por exigência de segurança, não habilitar RLS automaticamente sem decisão de políticas e testes com a role de aplicação.** Os advisors de segurança retornaram sem lints; performance indicou um índice de FK ainda pendente (`submission_keys.request_id`).
 
 Fontes oficiais:
 - https://supabase.com/docs/guides/platform/billing-on-supabase
@@ -67,6 +67,20 @@ GRANT USAGE, SELECT ON st1_bi.request_protocol_seq,
 
 O Supabase Free pode pausar projetos com baixa atividade. Por isso o Free é conveniente para **homologação**, mas antes do uso produtivo do Squad o responsável deve aceitar explicitamente esse risco ou avaliar outro plano.
 
+## Verificação realizada no projeto Supabase
+
+- **Schema aplicado:** `st1_bi`
+- **Tabelas:** `request_records`, `bi_memberships`, `bi_tickets`, `request_events`, `submission_keys`, `audit_log`
+- **Linhas iniciais:** 0 registros em solicitações, tickets e membros.
+- **Migração registrada no Supabase:** `20261021023801_st1_connect_bi_foundation_private_schema`
+- **Revisão RLS pendente:** todas as tabelas estão em schema não exposto e sem acesso de `anon`/`authenticated`. A habilitação de RLS como defesa adicional requer escolher a estratégia de acesso do papel SQL e validar políticas; não habilitar indiscriminadamente.
+- **Próximo passo:** obter uma credencial Postgres para o projeto no painel Supabase, restringir ao backend, configurar a `DATABASE_URL` no Vercel Preview e testar `GET /api/health` com a flag `BI_CONNECT_ENABLED`. Preferir uma role SQL com privilégios mínimos a usar `postgres` no runtime.
+- **Não reproduzir segredo em chat, documentação ou código.** Configurar a string diretamente na área protegida de variáveis do Vercel.
+
+### Observação sobre migrações
+
+A primeira migração foi executada pela integração Supabase e está registrada no histórico gerenciado dessa plataforma. O script local `db/migrate.mjs` mantém seu próprio registro em `st1_bi.schema_migrations`; **não executar a migração local sobre o mesmo projeto antes de reconciliar os dois históricos**, para evitar caminhos de gestão concorrentes.
+
 ## Estado de conclusão
 
-A Fase A permanece na branch `feature/st1-connect-bi-foundation`. `npm test` e `npm run build` verificam o código, mas **não comprovam integração com um banco real**. A aprovação de conexão, criação de tabelas e migrações, credenciais e teste entre pessoas só ocorre após o projeto dedicado ser escolhido e configurado.
+A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase dedicado e a migração inicial já estão criados e verificados**, sem ligação ao ST1 Academy. Ainda falta conectar a credencial protegida ao Vercel Preview e realizar testes reais de dois usuários e de escrita/leitura entre dispositivos antes do merge.
