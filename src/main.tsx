@@ -5,6 +5,7 @@ import '@fontsource-variable/outfit';
 import AuthGate from './AuthGate';
 import './styles.css';
 import './sidebar.css';
+import './login-viewport.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><AuthGate /></React.StrictMode>,
