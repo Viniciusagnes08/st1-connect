@@ -499,7 +499,7 @@ Webhook exige fluxo separado de hostname aprovado e segredo em env; não aceitar
 
 ## Task 9: Verificação do endereço de e-mail vinculado ao login
 
-**Files:** Create `api/_lib/otp.js`, `api/contact-verify.js`, `api/_lib/otp.test.js`. Modify: `db/migrations/003_routing.sql`.
+**Files:** Create `api/_lib/otp.js`, `api/contact-verify.js`, `api/_lib/otp.test.js`. Modify: `db/migrations/003_routing.sql` e `src/AuthGate.tsx`.
 
 - [ ] **Step 1: teste de bloqueio de envio a conta não verificada.** Identidade ativa sem `verified_at` recebe somente notificação in-app e convite para verificar contato; identidade verificada para e-mail diferente do atual também não recebe e-mail automático.
 
@@ -537,7 +537,7 @@ export function verifyOtp(code,expected,pepper) {
 ~~~
 
 - [ ] **Step 4: endpoint autenticado.** `POST /api/contact-verify` `action:'send'` lê e-mail exclusivamente de `currentPrincipal`, gera OTP usando `ST1_INVITE_PEPPER`, guarda HMAC/expiração de 10 minutos, exige intervalo mínimo de 60 segundos e 5 tentativas e envia pelo provedor da Fase C. `action:'confirm'` valida HMAC, vincula `verified_at` ao `user_id` e e-mail atual, descarta o desafio e não aceita e-mail fornecido pelo corpo.
-- [ ] **Step 5: testes e commit.** Código incorreto, expirado, sexta tentativa, e-mail alterado e falha do provedor devem falhar sem dados pessoais em logs. Commit: `feat(identity): verify login email before automatic notifications`.
+- [ ] **Step 5: interface de verificação e testes.** No painel `Meu acesso → Minha conta` (em `src/AuthGate.tsx`), incluir `Verificar meu e-mail` com botão para receber código e campo de seis dígitos, indicando e-mail mascarado e estado confirmado. Código incorreto, expirado, sexta tentativa, e-mail alterado e falha do provedor devem falhar sem dados pessoais em logs. Commit: `feat(identity): verify login email before automatic notifications`.
 
 ## Task 10: Observabilidade, custos e liberação por canal
 
