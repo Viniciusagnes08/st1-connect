@@ -37,6 +37,7 @@
 | `api/_lib/outbox.js` | claims/leases/retry e resultado |
 | `api/_lib/channels/trello.js` | criação idempotente de card |
 | `api/_lib/channels/email.js` | provedor transacional e e-mail ao solicitante |
+| `api/_lib/otp.js` e `api/contact-verify.js` | verificação do e-mail do login antes de envios automáticos |
 | `api/_lib/channels/webhook.js` | webhook allowlist, assinado |
 | `api/_lib/channels/manual.js` | registro auditado de envio humano |
 | `api/_lib/delivery-worker.js` | processador do outbox |
@@ -237,6 +238,9 @@ export async function confirmReferral(db, user, requestId, destination) {
   await db.query(
     "INSERT INTO referral_events(referral_id,kind,actor_user_id) VALUES($1,'confirmed_by_requester',$2)",
     [referral.id,user.id]);
+  await db.query(
+    "INSERT INTO delivery_outbox(event_key,request_id,referral_id,delivery_type,payload) VALUES($1,$2,$3,'requester_email',$4::jsonb)",
+    ['email:waiting:' + referral.id,requestId,referral.id,JSON.stringify({requestId,referralId:referral.id,event:'waiting'})]);
   return referral;
 }
 ~~~
@@ -291,7 +295,7 @@ export function retryAfter(attempts, now=Date.now()) {
 }
 ~~~
 
-- [ ] **Step 3: worker com resultado explícito.** `delivery-worker.js` itera jobs reclamados, faz lookup do canal ativo, chama adaptador pelo `type`, grava `status='sent'` + `external_id` quando resposta tecnicamente aceita, atualiza `referrals.state='forwarded'` e insere evento/notification e **uma nova outbox requester_email** na mesma transação. Se falhar, classifica erro, incrementa retry com `retryAfter` e após 5 tentativas marca failed; atualiza timeline e notifica triagem. Não logar corpo nem segredos.
+- [ ] **Step 3: worker com resultado explícito.** `delivery-worker.js` itera jobs reclamados, faz lookup do canal ativo, chama adaptador pelo `type`, grava `status='sent'` + `external_id` quando resposta tecnicamente aceita, atualiza `referrals.state='forwarded'` e insere evento/notification e **uma nova outbox requester_email** na mesma transação. Se falhar, classifica erro, incrementa retry com `retryAfter` e após 5 tentativas marca failed; atualiza timeline, notifica triagem e insere **outbox requester_email de falha** em transação. O e-mail inicial com estado **Aguardando encaminhamento**, gerado na confirmação, precisa ser processado com ID distinto. Deduplicar por `event_key` e não repetir mensagens quando o status não mudou. Não logar corpo nem segredos.
 - [ ] **Step 4: endpoint Cron protegido.**
 
 ~~~js
@@ -485,10 +489,52 @@ Webhook exige fluxo separado de hostname aprovado e segredo em env; não aceitar
 
 - [ ] **Step 1: UI do solicitante com ciência do encaminhamento.** Para demanda fora de escopo, mostrar: "Esta solicitação parece pertencer a [área]", motivo em frase objetiva, campos que serão compartilhados, canal configurado, dois controles **Confirmar encaminhamento** e **Pedir revisão**. O primeiro chama `POST /api/referrals`, o segundo cria evento de revisão e mantém `scope=REVIEW`.
 - [ ] **Step 2: fila de exceções.** `TriagePage.tsx` lista pedidos sem destino, encaminhamentos em retry/falha, reclassificações solicitadas, canais não homologados e itens aguardando confirmação. Supervisor pode aprovar destino sugerido com justificativa; Admin pode editar regra geral.
-- [ ] **Step 3: notificações reais e e-mail compatíveis com estado.** Ao conseguir `forwarded`, mostrar "Encaminhado ao canal [nome], aguardando confirmação de recebimento" e agendar um único e-mail com protocolo/contato/resumo/link privado. Falha exibe "Aguardando encaminhamento" ou "Falha no envio" e notifica triagem. Não enviar corpo sensível integral em e-mail não homologado.
+- [ ] **Step 3: notificações reais e e-mail compatíveis com estado.** Na confirmação mostrar **Aguardando encaminhamento** e agendar e-mail inicial; ao conseguir `forwarded`, mostrar "Encaminhado ao canal [nome], aguardando confirmação de recebimento" e agendar e-mail de atualização com protocolo/contato/resumo/link privado. Falha exibe "Aguardando encaminhamento" ou "Falha no envio", notifica triagem e agenda e-mail de falha ao solicitante (se o contato estiver verificado). Não enviar corpo sensível integral em e-mail não homologado.
 - [ ] **Step 4: executar QA.** Mobile 390px/desktop, teclado, dois usuários, sem duplicação ao clicar novamente, fallback manual e acesso por URL. Commit: `feat(ui): request scope review and tracking`.
 
-## Task 9: Observabilidade, custos e liberação por canal
+## Task 9: Verificação do endereço de e-mail vinculado ao login
+
+**Files:** Create `api/_lib/otp.js`, `api/contact-verify.js`, `api/_lib/otp.test.js`. Modify: `db/migrations/003_routing.sql`.
+
+- [ ] **Step 1: teste de bloqueio de envio a conta não verificada.** Identidade ativa sem `verified_at` recebe somente notificação in-app e convite para verificar contato; identidade verificada para e-mail diferente do atual também não recebe e-mail automático.
+
+- [ ] **Step 2: schema de verificação.**
+
+~~~sql
+-- Acrescentar em db/migrations/003_routing.sql
+CREATE TABLE account_contact_verifications (
+  user_id text PRIMARY KEY,
+  email text NOT NULL,
+  verified_at timestamptz,
+  otp_hash text,
+  otp_expires_at timestamptz,
+  otp_attempts integer NOT NULL DEFAULT 0,
+  otp_sent_at timestamptz
+);
+~~~
+
+- [ ] **Step 3: helper de OTP reutilizável na Fase D.**
+
+~~~js
+// api/_lib/otp.js
+import { randomInt, createHmac, timingSafeEqual } from 'node:crypto';
+const mac=(code,pepper)=>createHmac('sha256',pepper).update(String(code)).digest('hex');
+export function createOtp(pepper) {
+  if (!pepper) throw new Error('Segredo de OTP indisponível');
+  const code=String(randomInt(0,1000000)).padStart(6,'0');
+  return {code,digest:mac(code,pepper)};
+}
+export function verifyOtp(code,expected,pepper) {
+  if (!/^\d{6}$/.test(String(code)) || !expected || !pepper) return false;
+  const a=Buffer.from(mac(code,pepper)), b=Buffer.from(expected);
+  return a.length===b.length && timingSafeEqual(a,b);
+}
+~~~
+
+- [ ] **Step 4: endpoint autenticado.** `POST /api/contact-verify` `action:'send'` lê e-mail exclusivamente de `currentPrincipal`, gera OTP usando `ST1_INVITE_PEPPER`, guarda HMAC/expiração de 10 minutos, exige intervalo mínimo de 60 segundos e 5 tentativas e envia pelo provedor da Fase C. `action:'confirm'` valida HMAC, vincula `verified_at` ao `user_id` e e-mail atual, descarta o desafio e não aceita e-mail fornecido pelo corpo.
+- [ ] **Step 5: testes e commit.** Código incorreto, expirado, sexta tentativa, e-mail alterado e falha do provedor devem falhar sem dados pessoais em logs. Commit: `feat(identity): verify login email before automatic notifications`.
+
+## Task 10: Observabilidade, custos e liberação por canal
 
 **Files:** Create `docs/operations/routing-runbook.md` e `api/_lib/routing-metrics.js`. Modify `README.md`.
 
