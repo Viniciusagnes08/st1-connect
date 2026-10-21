@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { createBiRequest, parseBiInput, canReadRequest,
-  validateTransition, validateIdempotencyKey, listMyRequests } from './bi-service.js';
+  validateTransition, validateIdempotencyKey, listMyRequests, getBiTicket } from './bi-service.js';
 
 const actor={id:'user-one',email:'one@example.invalid',role:'Solicitante'};
 const input={title:'Corrigir painel de vendas',description:'O indicador de vendas mudou na última atualização.'};
@@ -82,4 +82,30 @@ test('situações só avançam por transição permitida e motivo obrigatório',
   assert.throws(()=>validateTransition('Novo','Fechado',''),e=>e.status===409);
   assert.throws(()=>validateTransition('Em atendimento','Resolvido',''),e=>e.status===400);
   assert.equal(validateTransition('Em atendimento','Resolvido','Corrigimos a origem da métrica.').state,'Resolvido');
+});
+
+
+test('detalhe alheio retorna 404 sem revelar a existência do chamado', async () => {
+  const other={id:'person-two',role:'Solicitante'};
+  const db={query:async (sql) => {
+    if(sql.includes('FROM request_records r JOIN bi_tickets'))
+      return {rows:[{id:uuid,scope:'BI',requester_user_id:'person-one'}],rowCount:1};
+    if(sql.includes('FROM bi_memberships')) return {rows:[],rowCount:0};
+    throw Error('Consulta não esperada: '+sql);
+  }};
+  await assert.rejects(getBiTicket(db,other,uuid),error=>error.status===404);
+});
+
+test('membro BI autorizado consegue ler histórico de solicitação de outra conta', async () => {
+  const admin={id:'bi-admin',role:'Administrador'};
+  const db={query:async(sql) => {
+    if(sql.includes('FROM request_records r JOIN bi_tickets'))
+      return {rows:[{id:uuid,scope:'BI',requester_user_id:'person-one'}],rowCount:1};
+    if(sql.includes('FROM bi_memberships'))
+      return {rows:[{user_id:'bi-admin',active:true,bi_role:'manager'}],rowCount:1};
+    if(sql.includes('FROM request_events')) return {rows:[{event_type:'created'}],rowCount:1};
+    throw Error('Consulta não esperada: '+sql);
+  }};
+  const result=await getBiTicket(db,admin,uuid);
+  assert.equal(result.events[0].event_type,'created');
 });
