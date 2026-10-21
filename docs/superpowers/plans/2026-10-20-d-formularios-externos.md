@@ -63,7 +63,8 @@ CREATE TABLE public_invites (
   otp_expires_at timestamptz,
   otp_attempts integer NOT NULL DEFAULT 0,
   otp_requested_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (expires_at > created_at)
 );
 CREATE INDEX public_invites_template ON public_invites(template_id,created_at DESC);
 ALTER TABLE request_records
@@ -82,7 +83,7 @@ CREATE TABLE public_access_grants (
 );
 ~~~
 
-Para convite, `version_id` precisa pertencer a `template_id`. Garantir no serviço com SELECT e adicionar chave composta quando aplicável; nunca derivar permissões apenas do slug público. A política padrão é uma utilização e validade máxima de 7 dias. Usar `CHECK (expires_at>created_at)` ou validação equivalente no serviço.
+Para convite, `version_id` precisa pertencer a `template_id`. Garantir no serviço com SELECT e adicionar chave composta quando aplicável; nunca derivar permissões apenas do slug público. A política padrão é uma utilização e validade máxima de 7 dias. O `CHECK (expires_at>created_at)` já protege o banco; validar também a duração máxima de 7 dias no serviço.
 
 - [ ] **Step 3: migração idempotente e commit.** `DATABASE_URL="$DATABASE_URL_TEST" node db/migrate.mjs`; não alterar convidado real porque ainda não existe. Commit: `feat(public): schema for limited external invitations`.
 
