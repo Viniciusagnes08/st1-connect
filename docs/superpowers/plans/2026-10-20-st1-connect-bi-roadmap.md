@@ -66,8 +66,12 @@ Link externo individual -> OTP no e-mail convidado -> formulário permitido
 
 ## Infraestrutura e aprovações necessárias
 
+### PostgreSQL — Supabase escolhido para homologação
+
+A alternativa agora prevista é um **projeto Supabase dedicado ao ST1 Connect** no plano Free, sem reutilizar o ST1 Academy. A organização conectada tem um projeto ativo e outro inativo; falta o usuário indicar a organização para criação do banco. O código já foi ajustado para o schema privado `st1_bi`, não exposto na Data API. Ver `docs/operations/supabase-st1-connect-setup.md`.
+
 ### PostgreSQL
-- Sugestão para avaliação: Neon Postgres via integração do Vercel Marketplace. Alternativas podem ser adotadas se já aprovadas pela empresa.
+- O provedor previsto nesta implantação é Supabase Postgres em projeto dedicado, com confirmação prévia de organização, custo e condições de armazenamento.
 - **Nenhum banco PostgreSQL conectado foi confirmado na inspeção deste trabalho.**
 - Para usar, confirmar empresa contratante, plano, cotas, região, custos, retenção, separação Preview/Produção, backups, data retention e conexão pooled.
 - Variáveis server-side como `DATABASE_URL` e `DATABASE_URL_TEST` não entram no repositório, não têm prefixo `VITE_` e não aparecem no navegador.
