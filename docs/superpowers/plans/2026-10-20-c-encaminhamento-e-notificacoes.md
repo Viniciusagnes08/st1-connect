@@ -238,9 +238,14 @@ export async function confirmReferral(db, user, requestId, destination) {
   await db.query(
     "INSERT INTO referral_events(referral_id,kind,actor_user_id) VALUES($1,'confirmed_by_requester',$2)",
     [referral.id,user.id]);
-  await db.query(
-    "INSERT INTO delivery_outbox(event_key,request_id,referral_id,delivery_type,payload) VALUES($1,$2,$3,'requester_email',$4::jsonb)",
-    ['email:waiting:' + referral.id,requestId,referral.id,JSON.stringify({requestId,referralId:referral.id,event:'waiting'})]);
+  const verified = await db.query(
+    'SELECT 1 FROM account_contact_verifications WHERE user_id=$1 AND email=$2 AND verified_at IS NOT NULL',
+    [user.id,user.email]);
+  if (verified.rowCount) {
+    await db.query(
+      "INSERT INTO delivery_outbox(event_key,request_id,referral_id,delivery_type,payload) VALUES($1,$2,$3,'requester_email',$4::jsonb)",
+      ['email:waiting:' + referral.id,requestId,referral.id,JSON.stringify({requestId,referralId:referral.id,event:'waiting'})]);
+  }
   return referral;
 }
 ~~~
@@ -295,7 +300,7 @@ export function retryAfter(attempts, now=Date.now()) {
 }
 ~~~
 
-- [ ] **Step 3: worker com resultado explícito.** `delivery-worker.js` itera jobs reclamados, faz lookup do canal ativo, chama adaptador pelo `type`, grava `status='sent'` + `external_id` quando resposta tecnicamente aceita, atualiza `referrals.state='forwarded'` e insere evento/notification e **uma nova outbox requester_email** na mesma transação. Se falhar, classifica erro, incrementa retry com `retryAfter` e após 5 tentativas marca failed; atualiza timeline, notifica triagem e insere **outbox requester_email de falha** em transação. O e-mail inicial com estado **Aguardando encaminhamento**, gerado na confirmação, precisa ser processado com ID distinto. Deduplicar por `event_key` e não repetir mensagens quando o status não mudou. Não logar corpo nem segredos.
+- [ ] **Step 3: worker com resultado explícito.** `delivery-worker.js` itera jobs reclamados, faz lookup do canal ativo, chama adaptador pelo `type`, grava `status='sent'` + `external_id` quando resposta tecnicamente aceita, atualiza `referrals.state='forwarded'` e insere evento/notification e **uma nova outbox requester_email** na mesma transação. Se falhar, classifica erro, incrementa retry com `retryAfter` e após 5 tentativas marca failed; atualiza timeline, notifica triagem e insere **outbox requester_email de falha** em transação. O e-mail inicial com estado **Aguardando encaminhamento**, gerado **apenas para conta verificada**, precisa ser processado com ID distinto. Para conta não verificada, criar notificação interna solicitando confirmação de endereço; após verificar, oferecer envio da atualização material ainda atual, e nunca enviar estado histórico desatualizado. Deduplicar por `event_key` e não repetir mensagens quando o status não mudou. Não logar corpo nem segredos.
 - [ ] **Step 4: endpoint Cron protegido.**
 
 ~~~js
