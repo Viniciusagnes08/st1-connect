@@ -212,8 +212,11 @@ export async function confirmReferral(db, user, requestId, destination) {
     [requestId]);
   const request = query.rows[0];
   if (!request) throw Object.assign(new Error('Solicitação inexistente'),{status:404});
-  if (request.requester_user_id !== user.id &&
-      !['Administrador','Supervisor'].includes(user.role))
+  const membership = await db.query(
+    'SELECT 1 FROM bi_memberships WHERE user_id=$1 AND active=true', [user.id]);
+  const isBiManager = membership.rowCount > 0 &&
+    ['Administrador','Supervisor'].includes(user.role);
+  if (request.requester_user_id !== user.id && !isBiManager)
     throw Object.assign(new Error('Acesso proibido'),{status:403});
   if (request.scope === 'BI')
     throw Object.assign(new Error('Demanda BI exige reclassificação pelo Supervisor'),{status:409});
@@ -321,50 +324,82 @@ Para Hobby, **não publicar essa expressão**; ativar um serviço de entrega dur
 
 **Files:** Create `api/_lib/channels/trello.js`, `api/_lib/channels/email.js`, `api/_lib/channels/webhook.js`, `api/_lib/channels/manual.js`, `api/_lib/channels/channels.test.js`.
 
-- [ ] **Step 1: teste de mensagem padronizada e limitação de dados.**
+- [ ] **Step 1: escrever teste completo de envio estruturado e deduplicação no Trello.**
 
 ~~~js
-// Exemplo de contrato de adaptador
-const delivered = await adapter.send({
-  requestId:'a-uuid',protocol:'ST1-000234',title:'Problema no Kommo',
+// api/_lib/channels/channels.test.js
+import { test } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { sendToTrello } from './trello.js';
+const message = {
+  requestId:'request-1',protocol:'ST1-000234',title:'Problema no Kommo',
   requesterName:'Solicitante Teste',requesterEmail:'pessoa@example.invalid',
-  summary:'Não consigo atualizar uma etapa do funil.',channelConfig:{idList:'test-list'},
-  eventKey:'channel:referral-uuid',
+  summary:'Não consigo atualizar uma etapa do funil.',
+  channelConfig:{idList:'0123456789abcdef01234567'}, eventKey:'channel:referral-1',
+};
+test('cria card com resumo mínimo após consulta de duplicidade', async () => {
+  const methods=[];
+  const http=async (_url,init) => {
+    methods.push(init.method);
+    if (init.method==='GET') return {ok:true,json:async()=>[]};
+    return {ok:true,json:async()=>({id:'card-1',url:'https://trello.com/c/card-1'})};
+  };
+  const result=await sendToTrello(message,{key:'testkey',token:'testtoken'},http);
+  assert.equal(result.accepted,true);
+  assert.equal(result.reference,'card-1');
+  assert.deepEqual(methods,['GET','POST']);
 });
-assert.equal(delivered.accepted,true);
-assert.equal(typeof delivered.reference,'string');
+test('retorna referência antiga sem recriar card', async () => {
+  const methods=[];
+  const http=async (_url,init) => {
+    methods.push(init.method);
+    return {ok:true,json:async()=>[{id:'card-old',url:'https://trello.com/c/card-old',
+      desc:'[ST1_CONNECT_ID:channel:referral-1]'}]};
+  };
+  const result=await sendToTrello(message,{key:'testkey',token:'testtoken'},http);
+  assert.equal(result.reference,'card-old');
+  assert.deepEqual(methods,['GET']);
+});
 ~~~
 
-Não incluir senha, convite público, token, logs de sessão ou campos indiscriminados no objeto do adaptador. `summary` é resumo autorizado por política do canal; respostas completas ficam em link protegido quando houver autenticação/autorização do destinatário.
-
-- [ ] **Step 2: Trello em quadro/lista validada.**
+- [ ] **Step 2: implementar Trello com consulta antes de criar e falha fechada.**
 
 ~~~js
 // api/_lib/channels/trello.js
 export async function sendToTrello(message, secrets, http=fetch) {
-  if (!message.channelConfig.idList || !secrets.key || !secrets.token)
+  const idList=message?.channelConfig?.idList;
+  if (!/^[a-f0-9]{24}$/i.test(idList || '') || !secrets?.key || !secrets?.token)
     throw new Error('Configuração Trello indisponível');
-  const marker = '[ST1_CONNECT_ID:' + message.eventKey + ']';
-  // Antes de criar, buscar em canal/lista o marker e retornar card existente
-  // se houve falha entre criação e gravação do recibo na execução anterior.
-  const url = new URL('https://api.trello.com/1/cards');
-  url.searchParams.set('key', secrets.key);
-  url.searchParams.set('token', secrets.token);
-  const response = await http(url, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({idList:message.channelConfig.idList,
+  const marker='[ST1_CONNECT_ID:' + message.eventKey + ']';
+  const credentials=new URLSearchParams({key:secrets.key,token:secrets.token});
+  const lookup=new URL('https://api.trello.com/1/lists/' + idList + '/cards');
+  for (const [key,value] of credentials) lookup.searchParams.set(key,value);
+  lookup.searchParams.set('fields','id,desc,url');
+  const found=await http(lookup,{method:'GET',headers:{Accept:'application/json'},
+    cache:'no-store',signal:AbortSignal.timeout(8000)});
+  if (!found.ok) throw new Error('Não foi possível verificar cards existentes');
+  const cards=await found.json();
+  if (!Array.isArray(cards)) throw new Error('Resposta inesperada do Trello');
+  const existing=cards.find(card => String(card.desc || '').includes(marker));
+  if (existing) return {accepted:true,reference:existing.id,url:existing.url,reused:true};
+  const url=new URL('https://api.trello.com/1/cards');
+  for (const [key,value] of credentials) url.searchParams.set(key,value);
+  const response=await http(url,{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({idList,
       name:'[ST1 CONNECT] ' + message.title + ' | ' + message.protocol,
-      desc:marker + '\nSolicitante: ' + message.requesterName +
-        '\nContato: ' + message.requesterEmail +
-        '\nResumo: ' + message.summary})
-  });
+      desc:marker + '\nSolicitante: ' + message.requesterName
+        + '\nContato: ' + message.requesterEmail
+        + '\nResumo: ' + message.summary}),
+    signal:AbortSignal.timeout(8000)});
   if (!response.ok) throw new Error('Trello recusou criação');
-  const data = await response.json();
+  const data=await response.json();
+  if (!data.id || !data.url) throw new Error('Recibo Trello incompleto');
   return {accepted:true,reference:data.id,url:data.url};
 }
 ~~~
 
-**Obrigatório complementar** com busca exata do marker na lista antes de criar card, sob lease no banco, para reconciliar resultado indefinido após timeout; o comentário acima representa a posição exata desse bloco. Use API Trello com privilégios mínimos e sem imprimir URL com token em logs. Sem reconciliação, teste de retry contra Trello é falho e o conector não pode ser ativado.
+A busca por marker dá proteção em retries, mas **não é garantia absoluta** em falhas entre busca e escrita se houver atividade fora do lease. O `delivery_outbox` impede concorrência normal. Havendo timeout de criação com resultado ambíguo e falha na busca de reconciliação, **não retry às cegas**: marcar para revisão manual, verificar o card no Trello e gravar referência antes de reprocessar. Nunca incluir query com `key`/`token` em logs.
 
 - [ ] **Step 3: provedor transacional institucional para e-mail.**
 
@@ -373,46 +408,49 @@ export async function sendToTrello(message, secrets, http=fetch) {
 export async function sendEmail(message, env=process.env, http=fetch) {
   if (!env.RESEND_API_KEY || !env.ST1_MAIL_FROM)
     throw new Error('E-mail transacional não configurado');
-  if (!message.to || !message.subject || !message.html)
+  if (!message.to || !message.subject || !message.html || !message.eventKey)
     throw new Error('Mensagem incompleta');
-  const response = await http('https://api.resend.com/emails',{
+  const response=await http('https://api.resend.com/emails',{
     method:'POST',
     headers:{Authorization:'Bearer ' + env.RESEND_API_KEY,
-      'Content-Type':'application/json',
-      'Idempotency-Key':message.eventKey},
+      'Content-Type':'application/json','Idempotency-Key':message.eventKey},
     body:JSON.stringify({from:env.ST1_MAIL_FROM,to:[message.to],
-      subject:message.subject,html:message.html})
+      subject:message.subject,html:message.html}),
+    signal:AbortSignal.timeout(8000)
   });
-  if (!response.ok) throw new Error('Provedor de e-mail recusou entrega');
-  const data = await response.json();
+  if (!response.ok) throw new Error('Provedor de e-mail recusou envio');
+  const data=await response.json();
+  if (!data.id) throw new Error('Provedor não retornou recibo');
   return {accepted:true,reference:data.id};
 }
 ~~~
 
-Usar domínio remetente ST1 verificado em provedor com SPF/DKIM/DMARC. **Aceite HTTP do provedor não prova entrega na caixa**. Resolver o destinatário da conta ativa no servidor; para contas ainda sem verificação de e-mail, concluir verificação via link/OTP antes do disparo automático. Não usar credencial Gmail pessoal ou conta do usuário para o sistema.
+Domínio ST1 remetente e credenciais devem ser verificados com SPF/DKIM/DMARC. **HTTP aceito não significa entregue à pessoa.** Resolver destinatário via conta ativa; contas ainda não verificadas exigem verificação de posse do e-mail antes de notificação automática. A API Resend documenta idempotência por **24 horas**; para reenvio com resultado incerto após essa janela, exigir reconciliação com provedor/revisão manual em vez de repetir como se fosse seguro.
 
-- [ ] **Step 4: webhook restrito.**
+- [ ] **Step 4: webhook só para URL HTTPS exata previamente aprovada.**
 
 ~~~js
 // api/_lib/channels/webhook.js
 import { createHmac } from 'node:crypto';
-export async function sendWebhook(message, urlString, secret, hosts, http=fetch) {
-  const url = new URL(urlString);
-  if (url.protocol !== 'https:' || !hosts.includes(url.hostname)
-    || url.username || url.password || url.port) throw new Error('Destino não autorizado');
-  const body = JSON.stringify(message);
-  const sig = createHmac('sha256',secret).update(body).digest('hex');
-  const response = await http(url,{method:'POST',redirect:'error',
-    headers:{'Content-Type':'application/json','X-ST1-Signature':sig,
-      'Idempotency-Key':message.eventKey},body,signal:AbortSignal.timeout(8000)});
+export async function sendWebhook(message, endpoint, secret, allowedUrls, http=fetch) {
+  const url=new URL(endpoint);
+  if (url.protocol!=='https:' || url.username || url.password || url.port
+    || !Array.isArray(allowedUrls) || !allowedUrls.includes(url.origin + url.pathname)
+    || url.search || url.hash) throw new Error('Webhook não autorizado');
+  const body=JSON.stringify(message);
+  const signature=createHmac('sha256',secret).update(body).digest('hex');
+  const response=await http(url,{method:'POST',redirect:'error',
+    headers:{'Content-Type':'application/json','X-ST1-Signature':signature,
+      'Idempotency-Key':message.eventKey},body,
+    signal:AbortSignal.timeout(8000)});
   if (!response.ok) throw new Error('Webhook recusado');
   return {accepted:true,reference:message.eventKey};
 }
 ~~~
 
-A allowlist de hosts é fixa em env/configuração revisada por Admin e validada na borda; resolver DNS com prevenção SSRF inclusive IP privado/loopback e revalidação pós-DNS antes de produção. Sem esse teste, não ativar webhook. O ACK de negócio é separado de HTTP 200.
+`allowedUrls` é lista **estática de URLs institucionais exatas no ambiente do servidor**, não vinda do frontend ou banco editável. O webhook fica **desabilitado** para hosts genéricos enquanto não existir política de egress/DNS anti-SSRF testada (incluindo IP privado, loopback, IPv6 e DNS rebinding); a verificação de HTTPS no código não é suficiente sozinha. HTTP 200 confirma apenas aceite do endpoint; ACK humano é evento separado.
 
-- [ ] **Step 5: manual assistido e testes.** `manual.js` monta texto copiável e só marca `forwarded` após Supervisor confirmar o canal e anexar comprovante; teste impede que `copy()` seja registrado como enviado. Homologar Trello com card de teste e e-mail com inbox de teste. Commit: `feat(channels): controlled Trello email webhook and manual adapters`.
+- [ ] **Step 5: manual assistido e testes.** `manual.js` monta texto copiável usando `protocol`, `requesterName`, `summary` e canal verificado; só marca `forwarded` após Supervisor BI confirmar destino e anexar comprovante verificável. Teste proíbe que `copy()` seja tratado como entrega. Homologar Trello com card de teste e e-mail com inbox de teste. Commit: `feat(channels): controlled Trello email webhook and manual adapters`.
 
 ## Task 7: Diretório de áreas/canais com autorização e versionamento
 
