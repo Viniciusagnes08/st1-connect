@@ -24,7 +24,9 @@ Há **autenticação de contas e sessões no servidor**, com cadastro persistido
 
 ## Login e ativação inicial
 
-A primeira visita ao endereço do ST1 Connect abre o formulário de ativação. O primeiro administrador informa **nome, e-mail, senha forte com pelo menos 12 caracteres (letras e números)** e o código disponível em **Vercel → Project → Settings → Environment Variables → ST1_SETUP_TOKEN**. Esse valor é secreto e **não deve ser publicado no GitHub, enviado por mensagem ou colocado em variáveis VITE_**. Apenas o primeiro cadastro usa esse código; em seguida, o administrador cria as contas em **Meu acesso → Usuários e permissões**.
+A primeira conta administrativa é **pré-reservada no armazenamento privado** usando `ST1_BOOTSTRAP_EMAIL`, `ST1_BOOTSTRAP_NAME` e o **hash SHA-256** `ST1_BOOTSTRAP_INVITE_HASH` armazenados nas variáveis do Vercel. A senha **não** é pré-definida: o administrador recebe um convite de uso único no e-mail corporativo verificado, abre o link `/#/activate?token=...`, escolhe uma senha forte com pelo menos 12 caracteres (letras e números), confirma e entra automaticamente. O convite expira 7 dias após a criação da conta e deixa de funcionar após a primeira ativação. Não publique o convite no repositório ou em mensagens públicas. Após entrar, o administrador cria contas em **Meu acesso → Usuários e permissões**.
+
+Se a conta já existir, o site exibe o login normal. O mecanismo antigo de configuração pelo `ST1_SETUP_TOKEN` permanece como fallback **somente em instalações sem e-mail de administrador pré-reservado**; com `ST1_BOOTSTRAP_EMAIL` definido, o cadastro aberto do administrador é bloqueado.
 
 Os perfis previstos nesta versão são:
 
@@ -35,7 +37,7 @@ Os perfis previstos nesta versão são:
 
 Para trocar a senha, entre em **Meu acesso → Minha conta**. Em caso de perda da senha, solicite ao administrador uma redefinição; não existe recuperação por e-mail. **Não use o recurso para armazenar senhas de colaboradores em chamados.**
 
-Configuração em produção: **ST1_AUTH_SECRET** (chave privada da sessão), **ST1_SETUP_TOKEN** (código de ativação) e **BLOB_READ_WRITE_TOKEN** (fornecido pelo Blob privado). O armazenamento privado não deve ser tornado público. O handler em `api/auth.js` verifica credenciais, sessão, papéis e alterações de usuários no servidor e devolve cookies HTTP-only, Secure e SameSite=Strict. Alterações no documento de contas utilizam ETag/if-match para minimizar conflitos de escrita.
+Configuração em produção: **ST1_AUTH_SECRET** (chave privada da sessão), **ST1_BOOTSTRAP_EMAIL**, **ST1_BOOTSTRAP_NAME**, **ST1_BOOTSTRAP_INVITE_HASH** (hash do convite, não o segredo original), **ST1_SETUP_TOKEN** (fallback de configuração) e **BLOB_READ_WRITE_TOKEN** (fornecido pelo Blob privado). O armazenamento privado não deve ser tornado público. O handler em `api/auth.js` verifica credenciais, sessão, papéis e alterações de usuários no servidor e devolve cookies HTTP-only, Secure e SameSite=Strict. Alterações no documento de contas utilizam ETag/if-match para minimizar conflitos de escrita.
 
 ## Execução local
 
