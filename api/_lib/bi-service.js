@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { requireBiStaff, isBiStaff } from './bi-membership.js';
+import { requireBiStaff, isBiStaff, findMembership } from './bi-membership.js';
 
 const STATES=['Novo','Em atendimento','Pendente','Resolvido','Fechado'];
 const NEXT_STATE={
@@ -135,12 +135,9 @@ export async function getBiTicket(db, principal, id) {
   );
   const record=rows.rows[0];
   if(!record) throw Object.assign(new Error('Chamado inexistente.'),{status:404});
-  let member=false;
-  if(record.requester_user_id!==principal.id) {
-    const m=await requireBiStaff(db,principal);
-    member=Boolean(m?.active);
-  }
-  if(!canReadRequest(principal,record,member))
+  const membership=record.requester_user_id===principal.id
+    ? null : await findMembership(db,principal.id);
+  if(!canReadRequest(principal,record,isBiStaff(principal,membership)))
     throw Object.assign(new Error('Chamado inexistente.'),{status:404});
   const events=await db.query(
     `SELECT event_type,created_at,actor_user_id,payload
