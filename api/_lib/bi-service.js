@@ -67,8 +67,8 @@ export async function createBiRequest(db, principal, input, providedKey) {
   await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[actorKey+':'+key]);
   const existing=await db.query(
     `SELECT r.id,r.protocol,r.title,r.scope,r.created_at,k.payload_hash
-     FROM submission_keys k
-     JOIN request_records r ON r.id=k.request_id
+     FROM st1_bi.submission_keys k
+     JOIN st1_bi.request_records r ON r.id=k.request_id
      WHERE k.actor_key=$1 AND k.idempotency_key=$2`,
     [actorKey,key]
   );
@@ -79,22 +79,22 @@ export async function createBiRequest(db, principal, input, providedKey) {
     return {id:row.id,protocol:row.protocol,title:row.title,scope:row.scope,createdAt:row.created_at,repeated:true};
   }
 
-  const next=await db.query("SELECT nextval('request_protocol_seq') AS n");
+  const next=await db.query("SELECT nextval('st1_bi.request_protocol_seq') AS n");
   const protocol='ST1-'+String(next.rows[0].n).padStart(6,'0');
   const inserted=await db.query(
-    `INSERT INTO request_records(protocol,requester_user_id,requester_email,scope,topic_key,title,details)
+    `INSERT INTO st1_bi.request_records(protocol,requester_user_id,requester_email,scope,topic_key,title,details)
      VALUES($1,$2,$3,'BI',$4,$5,$6::jsonb)
      RETURNING id,protocol,title,scope,created_at`,
     [protocol,principal.id,principal.email,body.topicKey,body.title,JSON.stringify({description:body.description})]
   );
   const request=inserted.rows[0];
-  await db.query('INSERT INTO bi_tickets(request_id) VALUES($1)',[request.id]);
+  await db.query('INSERT INTO st1_bi.bi_tickets(request_id) VALUES($1)',[request.id]);
   await db.query(
-    "INSERT INTO request_events(request_id,event_type,actor_user_id,payload) VALUES($1,'created',$2,$3::jsonb)",
+    "INSERT INTO st1_bi.request_events(request_id,event_type,actor_user_id,payload) VALUES($1,'created',$2,$3::jsonb)",
     [request.id,principal.id,JSON.stringify({source:'bi-basic-intake'})]
   );
   await db.query(
-    'INSERT INTO submission_keys(actor_key,idempotency_key,request_id,payload_hash) VALUES($1,$2,$3,$4)',
+    'INSERT INTO st1_bi.submission_keys(actor_key,idempotency_key,request_id,payload_hash) VALUES($1,$2,$3,$4)',
     [actorKey,key,request.id,payloadHash]
   );
   return {id:request.id,protocol:request.protocol,title:request.title,scope:request.scope,createdAt:request.created_at,repeated:false};
@@ -105,7 +105,7 @@ export async function listBiTickets(db, principal) {
   const result=await db.query(
     `SELECT r.id,r.protocol,r.title,r.topic_key,r.requester_email,r.created_at,
             r.updated_at,b.state,b.priority,b.assignee_user_id
-     FROM request_records r JOIN bi_tickets b ON b.request_id=r.id
+     FROM st1_bi.request_records r JOIN st1_bi.bi_tickets b ON b.request_id=r.id
      WHERE r.scope='BI' ORDER BY r.created_at DESC,r.id DESC LIMIT 100`
   );
   return result.rows;
@@ -115,8 +115,8 @@ export async function listMyRequests(db, principal) {
   const result=await db.query(
     `SELECT r.id,r.protocol,r.title,r.scope,r.topic_key,r.created_at,
             b.state
-     FROM request_records r
-     LEFT JOIN bi_tickets b ON b.request_id=r.id
+     FROM st1_bi.request_records r
+     LEFT JOIN st1_bi.bi_tickets b ON b.request_id=r.id
      WHERE r.requester_user_id=$1
      ORDER BY r.created_at DESC,r.id DESC LIMIT 100`,
     [principal.id]
@@ -129,7 +129,7 @@ export async function getBiTicket(db, principal, id) {
   const rows=await db.query(
     `SELECT r.id,r.protocol,r.title,r.scope,r.topic_key,r.requester_user_id,r.requester_email,
             r.details,r.created_at,r.updated_at,b.state,b.priority,b.assignee_user_id
-     FROM request_records r JOIN bi_tickets b ON b.request_id=r.id
+     FROM st1_bi.request_records r JOIN st1_bi.bi_tickets b ON b.request_id=r.id
      WHERE r.id=$1 AND r.scope='BI'`,
     [uuid]
   );
@@ -141,7 +141,7 @@ export async function getBiTicket(db, principal, id) {
     throw Object.assign(new Error('Chamado inexistente.'),{status:404});
   const events=await db.query(
     `SELECT event_type,created_at,actor_user_id,payload
-     FROM request_events WHERE request_id=$1 ORDER BY created_at,id LIMIT 150`,
+     FROM st1_bi.request_events WHERE request_id=$1 ORDER BY created_at,id LIMIT 150`,
     [uuid]
   );
   return {ticket:record,events:events.rows};
@@ -151,8 +151,8 @@ export async function changeBiTicketState(db, principal, id, nextState, reason) 
   await requireBiStaff(db,principal);
   const uuid=safeUuid(id);
   const current=await db.query(
-    `SELECT b.state,r.scope FROM bi_tickets b
-     JOIN request_records r ON r.id=b.request_id
+    `SELECT b.state,r.scope FROM st1_bi.bi_tickets b
+     JOIN st1_bi.request_records r ON r.id=b.request_id
      WHERE b.request_id=$1 FOR UPDATE OF b`,
     [uuid]
   );
@@ -160,15 +160,15 @@ export async function changeBiTicketState(db, principal, id, nextState, reason) 
     throw Object.assign(new Error('Chamado inexistente.'),{status:404});
   const next=validateTransition(current.rows[0].state,nextState,reason);
   const updated=await db.query(
-    `UPDATE bi_tickets
+    `UPDATE st1_bi.bi_tickets
      SET state=$2,updated_at=now(),
          assignee_user_id=CASE WHEN $2='Em atendimento' AND assignee_user_id IS NULL THEN $3 ELSE assignee_user_id END
      WHERE request_id=$1 RETURNING request_id,state,updated_at,assignee_user_id`,
     [uuid,next.state,principal.id]
   );
-  await db.query('UPDATE request_records SET updated_at=now() WHERE id=$1',[uuid]);
+  await db.query('UPDATE st1_bi.request_records SET updated_at=now() WHERE id=$1',[uuid]);
   await db.query(
-    "INSERT INTO request_events(request_id,event_type,actor_user_id,payload) VALUES($1,'state_changed',$2,$3::jsonb)",
+    "INSERT INTO st1_bi.request_events(request_id,event_type,actor_user_id,payload) VALUES($1,'state_changed',$2,$3::jsonb)",
     [uuid,principal.id,JSON.stringify({from:current.rows[0].state,to:next.state,reason:next.reason})]
   );
   return updated.rows[0];
