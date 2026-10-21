@@ -7,7 +7,7 @@ export function isBiStaff(user, membership) {
 
 export async function findMembership(db, userId) {
   const result=await db.query(
-    'SELECT user_id,bi_role,active,granted_at FROM bi_memberships WHERE user_id=$1',
+    'SELECT user_id,bi_role,active,granted_at FROM st1_bi.bi_memberships WHERE user_id=$1',
     [userId]
   );
   return result.rows[0] || null;
