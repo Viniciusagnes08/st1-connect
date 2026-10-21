@@ -53,3 +53,9 @@ test('login, ativação e recuperação permanecem com formulário e botões', (
   assert.match(login, /className="auth-invite-email"/);
   assert.match(login, /'activate' : setup \? 'setup' : 'login'/);
 });
+
+test('efeito decorativo não força barra de rolagem em altura normal', () => {
+  assert.match(css, /\.auth-orbit\s*\{[^}]*width:\s*min\(620px,\s*70dvh\)/);
+  assert.match(css, /\.auth-orbit\s*\{[^}]*height:\s*min\(620px,\s*70dvh\)/);
+  assert.match(css, /\.auth-orbit\s*\{[^}]*top:\s*29%/);
+});
