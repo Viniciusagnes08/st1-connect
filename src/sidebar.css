@@ -168,3 +168,25 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar-nav-group .nav-item { transition: none; }
 }
+
+/* Prioridade visual ao módulo real do Squad, sem interferir nas demonstrações. */
+.sidebar-nav-highlight .nav-item:not(.active) {
+  background: rgba(244, 91, 40, .08);
+  border: 1px solid rgba(244, 91, 40, .17);
+  color: #f6c8b7;
+}
+.sidebar-nav-highlight .nav-item:not(.active) > svg { color: #ed825c; }
+.sidebar-nav-highlight .nav-item:not(.active):hover {
+  background: rgba(244, 91, 40, .18);
+  color: #fff;
+}
+.sidebar-nav-highlight .nav-count {
+  font-size: 9px;
+  letter-spacing: .45px;
+  color: #f6b49b;
+  background: rgba(244, 91, 40, .17);
+}
+.sidebar-nav-highlight .nav-item.active .nav-count {
+  color: #fff;
+  background: rgba(255, 255, 255, .2);
+}

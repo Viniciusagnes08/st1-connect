@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { decodeSession } from './_lib/auth-session.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
@@ -69,17 +70,7 @@ function setSession(res, user) {
   res.setHeader('Set-Cookie', `${COOKIE}=${session}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${8 * 3600}`);
 }
 function removeSession(res) { res.setHeader('Set-Cookie', `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`); }
-function current(req, users) {
-  const cookie = String(req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith(`${COOKIE}=`));
-  if (!cookie || !secret()) return null;
-  const [payload, signature] = cookie.slice(COOKIE.length + 1).split('.');
-  if (!payload || !signature || !equal(signature, sign(payload))) return null;
-  try {
-    const info = JSON.parse(Buffer.from(payload, 'base64url').toString());
-    if (!Number.isFinite(info.exp) || info.exp < Date.now() / 1000) return null;
-    return users.find(u => u.id === info.uid && u.version === info.ver && u.active) || null;
-  } catch { return null; }
-}
+function current(req, users) { return decodeSession(req.headers.cookie, secret(), users); }
 function validPassword(password) {
   return typeof password === 'string' && password.length >= 12 && password.length <= 128 && /[A-Za-z]/.test(password) && /[0-9]/.test(password);
 }
