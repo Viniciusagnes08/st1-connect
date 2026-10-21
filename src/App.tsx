@@ -17,11 +17,13 @@ import {
 import type { AppData, Category, Priority, Status, Team, Ticket } from './domain';
 import { AssetsPage, KnowledgePage, ReportsPage, SettingsPage, TeamsPage } from './SecondaryPages';
 import { ProfilePanel } from './AuthGate';
+import BIWorkspace from './features/bi/BIWorkspace';
 import type { Account } from './AuthGate';
 
-type Page = 'overview' | 'tickets' | 'assets' | 'knowledge' | 'teams' | 'reports' | 'settings';
+type Page = 'bi' | 'overview' | 'tickets' | 'assets' | 'knowledge' | 'teams' | 'reports' | 'settings';
 const STORAGE_KEY = 'st1-connect:v1';
 const PAGE_INFO: Record<Page, { title: string; description: string; icon: typeof LayoutDashboard }> = {
+  bi: { title: 'Squad de BI', description: 'Demandas e acompanhamento do nosso time de dados.', icon: PanelTop },
   overview: { title: 'Visão geral', description: 'Sua operação conectada. Cada chamado no lugar certo.', icon: LayoutDashboard },
   tickets: { title: 'Central de chamados', description: 'Organize as solicitações e acompanhe cada solução.', icon: TicketIcon },
   assets: { title: 'Ativos e equipamentos', description: 'Uma visão completa dos recursos que movem a operação.', icon: Monitor },
@@ -69,7 +71,7 @@ export default function App({ user, onLogout }: { user: Account; onLogout: () =>
   const canManage = isAdmin || user.role === 'Supervisor';
   const isRequester = user.role === 'Solicitante';
   const canEditTickets = !isRequester;
-  const permitted = (p: Page) => p === 'tickets' || p === 'knowledge' || (p === 'overview' && !isRequester) || (p === 'assets' && !isRequester) || ((p === 'teams' || p === 'reports') && canManage) || (p === 'settings' && isAdmin);
+  const permitted = (p: Page) => p === 'bi' || p === 'tickets' || p === 'knowledge' || (p === 'overview' && !isRequester) || (p === 'assets' && !isRequester) || ((p === 'teams' || p === 'reports') && canManage) || (p === 'settings' && isAdmin);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Todos');
   const [priority, setPriority] = useState('Todas');
@@ -147,7 +149,11 @@ export default function App({ user, onLogout }: { user: Account; onLogout: () =>
         <span className="brand-st1">st<span>1</span><i /></span><span className="brand-divider" /><span className="brand-connect">connect<span>CENTRAL DE SERVIÇOS</span></span>
       </a>
       <button className="workspace-switch" onClick={() => setProfileOpen(true)}><span className="workspace-logo"><Network size={19} /></span><span><b>{data.settings.workspace}</b><small>Workspace da equipe</small></span><ChevronsUpDown size={15} /></button>
-      <div className="nav-section-label">PRINCIPAL</div>
+      <div className="nav-section-label">SQUAD DE BI</div>
+      <nav><a href="#/bi" onClick={() => go('bi')} className={`nav-item ${safePage === 'bi' ? 'active' : ''}`} aria-current={safePage === 'bi' ? 'page' : undefined}>
+        <PanelTop size={19} /><span>Central de BI</span><b className="nav-count">NOVO</b>
+      </a></nav>
+      <div className="nav-section-label">DEMONSTRAÇÃO</div>
       <nav>
         {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).filter(permitted).map(p => {
           const Icon = PAGE_INFO[p].icon;
@@ -168,18 +174,19 @@ export default function App({ user, onLogout }: { user: Account; onLogout: () =>
       <header className="topbar">
         <div className="topbar-left"><button className="icon-button mobile-menu" aria-label="Abrir navegação" onClick={() => setMobileOpen(true)}><Menu size={21} /></button><span className="breadcrumb-root">Workspace</span><ChevronRight className="breadcrumb-chevron" size={14} /><span className="breadcrumb-current">{info.title}</span></div>
         <div className="topbar-actions">
-          <form className="global-search" onSubmit={e => { e.preventDefault(); setStatus('Todos'); setPriority('Todas'); setTeam('Todas'); setCategory('Todas'); setCreatedDays(null); go('tickets'); }}><Search size={17} /><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar chamados..." aria-label="Busca global de chamados" /><kbd><Command size={11} /> K</kbd></form>
-          <button className="demo-badge" onClick={() => go('settings')}><span />Demonstração</button>
-          <div className="notification-area"><button className="icon-button notification-button" aria-label={`Notificações: ${overdue.length} chamados vencidos`} aria-expanded={notifications} onClick={() => setNotifications(!notifications)}><Bell size={20} />{overdue.length > 0 && <i />}</button>
+          {safePage !== 'bi' && <form className="global-search" onSubmit={e => { e.preventDefault(); setStatus('Todos'); setPriority('Todas'); setTeam('Todas'); setCategory('Todas'); setCreatedDays(null); go('tickets'); }}><Search size={17} /><input ref={searchRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar chamados..." aria-label="Busca global de chamados" /><kbd><Command size={11} /> K</kbd></form>}
+          {safePage !== 'bi' && <button className="demo-badge" onClick={() => go('settings')}><span />Demonstração</button>}
+          {safePage !== 'bi' && <div className="notification-area"><button className="icon-button notification-button" aria-label={`Notificações: ${overdue.length} chamados vencidos`} aria-expanded={notifications} onClick={() => setNotifications(!notifications)}><Bell size={20} />{overdue.length > 0 && <i />}</button>
             {notifications && <><button className="popover-dismiss" aria-label="Fechar notificações" onClick={() => setNotifications(false)} /><section className="notifications-popover"><div className="panel-head"><h3>Precisa de atenção</h3><span className="badge red">{overdue.length}</span></div>{overdue.length ? overdue.slice(0, 5).map(t => <button key={t.id} onClick={() => openTicket(t.id)}><span className="notification-dot" /><span><b>{t.title}</b><small>{t.id} · Prazo vencido</small></span><ChevronRight size={15} /></button>) : <p className="muted">Nenhum chamado vencido neste momento.</p>}<button className="notification-footer" onClick={() => showTickets('Vencidos')}>Ver fila de atenção <ArrowRight size={15} /></button></section></>}
-          </div>
+          </div>}
           <span className="topbar-divider" /><button className="avatar topbar-avatar" aria-label="Gerenciar meu acesso" onClick={() => setProfileOpen(true)}>{user.name.slice(0,2).toUpperCase()}</button>
         </div>
       </header>
 
       <main id="main-content" className="main-content" tabIndex={-1}>
-        {storageIssue && <div className="storage-warning" role="alert"><TriangleAlert size={18} /><span>{storageIssue}</span><button className="btn btn-ghost" onClick={() => exportTickets(data.tickets)}>Exportar</button></div>}
-        <div className="page-header"><div><div className="page-eyebrow">ST1 CONNECT <span>/</span> {page === 'overview' ? 'PAINEL OPERACIONAL' : 'CENTRAL DE SERVIÇOS'}</div><h1>{info.title}<span className="heading-dot">.</span></h1><p>{info.description}</p></div><div className="page-actions">{!isRequester && (safePage === 'tickets' || safePage === 'overview') && <button className="btn btn-secondary export-top" onClick={() => exportTickets(page === 'tickets' ? filtered : data.tickets)}><ArrowDownToLine size={16} />Exportar</button>}{safePage !== 'settings' && <button className="btn btn-primary" onClick={() => setNewTicket({})}><Plus size={18} />Novo chamado</button>}</div></div>
+        {safePage !== 'bi' && storageIssue && <div className="storage-warning" role="alert"><TriangleAlert size={18} /><span>{storageIssue}</span><button className="btn btn-ghost" onClick={() => exportTickets(data.tickets)}>Exportar</button></div>}
+        <div className="page-header"><div><div className="page-eyebrow">ST1 CONNECT <span>/</span> {safePage === 'bi' ? 'CENTRAL DO SQUAD' : page === 'overview' ? 'PAINEL OPERACIONAL' : 'DEMONSTRAÇÃO'}</div><h1>{info.title}<span className="heading-dot">.</span></h1><p>{info.description}</p></div><div className="page-actions">{!isRequester && (safePage === 'tickets' || safePage === 'overview') && <button className="btn btn-secondary export-top" onClick={() => exportTickets(page === 'tickets' ? filtered : data.tickets)}><ArrowDownToLine size={16} />Exportar</button>}{safePage !== 'settings' && safePage !== 'bi' && <button className="btn btn-primary" onClick={() => setNewTicket({})}><Plus size={18} />Novo chamado</button>}</div></div>
+        {safePage === 'bi' && <BIWorkspace user={user} />}
         {safePage === 'overview' && <Dashboard tickets={data.tickets} assetsCount={data.assets.length} now={now} onOpen={openTicket} onFilter={showTickets} onPage={go} onNew={() => setNewTicket({})} />}
         {safePage === 'tickets' && <TicketsPage tickets={filtered} allTickets={visibleTickets} now={now} onOpen={openTicket} status={status} onStatus={setStatus} query={query} setQuery={setQuery} priority={priority} setPriority={setPriority} team={team} setTeam={setTeam} category={category} setCategory={setCategory} createdDays={createdDays} clearDates={() => setCreatedDays(null)} onClear={() => showTickets()} />}
         {safePage === 'assets' && <AssetsPage data={data} onUpdate={update} onOpenTicket={openTicket} notify={setToast} />}
@@ -187,7 +194,7 @@ export default function App({ user, onLogout }: { user: Account; onLogout: () =>
         {safePage === 'teams' && <TeamsPage tickets={data.tickets} onTeamClick={chosenTeam => showTickets('Abertos', chosenTeam)} />}
         {safePage === 'reports' && <ReportsPage tickets={data.tickets} onOpenTicket={openTicket} />}
         {safePage === 'settings' && <SettingsPage data={data} onUpdate={update} notify={setToast} />}
-        <footer className="app-footer"><span><span className="footer-mark">st1</span> connect <span className="footer-divider">/</span> Pessoas, processos e soluções.</span><span>Dados demonstrativos · Armazenamento neste navegador <ShieldCheck size={13} /></span></footer>
+        <footer className="app-footer"><span><span className="footer-mark">st1</span> connect <span className="footer-divider">/</span> Pessoas, processos e soluções.</span>{safePage === 'bi' ? <span>Operação do BI · Dados compartilhados quando habilitados <ShieldCheck size={13} /></span> : <span>Dados demonstrativos · Armazenamento neste navegador <ShieldCheck size={13} /></span>}</footer>
       </main>
     </div>
     {newTicket && <NewTicketDialog data={data} currentUser={user} initial={newTicket} onClose={() => setNewTicket(null)} onCreate={ticket => { update({ ...data, tickets: [ticket, ...data.tickets] }); setNewTicket(null); setSelectedId(ticket.id); setToast(`Chamado ${ticket.id} criado.`); }} />}
