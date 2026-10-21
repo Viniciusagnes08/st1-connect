@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  ArrowLeft, ArrowRight, BarChart3, Check, CheckCircle2, ClipboardCheck, Clock3,
-  Database, ExternalLink, FilePlus2, Inbox, LoaderCircle, LockKeyhole, RefreshCcw,
+  ArrowLeft, ArrowRight, BarChart3, CheckCircle2, ClipboardCheck, Clock3,
+  Database, FilePlus2, Inbox, LoaderCircle, LockKeyhole, RefreshCcw,
   Shield, ShieldCheck, SlidersHorizontal, Users, X, AlertCircle,
 } from 'lucide-react';
 import {
-  BiApiError, createBiTicket, getBiQueue, getBiSelf, getBiTicket,
+  createBiTicket, getBiQueue, getBiSelf, getBiTicket,
   getMyRequests, getSquadMembers, setBiMember, updateBiState,
 } from './api';
 import { canDisplayQueue, scopeLabel, stateTone } from './bi-views';
