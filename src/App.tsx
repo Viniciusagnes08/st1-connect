@@ -16,6 +16,8 @@ import {
 } from './domain';
 import type { AppData, Category, Priority, Status, Team, Ticket } from './domain';
 import { AssetsPage, KnowledgePage, ReportsPage, SettingsPage, TeamsPage } from './SecondaryPages';
+import { ProfilePanel } from './AuthGate';
+import type { Account } from './AuthGate';
 
 type Page = 'overview' | 'tickets' | 'assets' | 'knowledge' | 'teams' | 'reports' | 'settings';
 const STORAGE_KEY = 'st1-connect:v1';
@@ -56,12 +58,18 @@ function loadData(): { data: AppData; issue: string } {
   return { data: createSeedData(), issue: '' };
 }
 
-export default function App() {
+export default function App({ user, onLogout }: { user: Account; onLogout: () => void }) {
   const [loaded] = useState(loadData);
   const [data, setData] = useState<AppData>(loaded.data);
   const [storageIssue, setStorageIssue] = useState(loaded.issue);
   const [page, setPage] = useState<Page>(readPage);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const isAdmin = user.role === 'Administrador';
+  const canManage = isAdmin || user.role === 'Supervisor';
+  const isRequester = user.role === 'Solicitante';
+  const canEditTickets = !isRequester;
+  const permitted = (p: Page) => p === 'tickets' || p === 'knowledge' || (p === 'overview' && !isRequester) || (p === 'assets' && !isRequester) || ((p === 'teams' || p === 'reports') && canManage) || (p === 'settings' && isAdmin);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Todos');
   const [priority, setPriority] = useState('Todas');
@@ -107,28 +115,30 @@ export default function App() {
     }
     catch { setStorageIssue('Não foi possível salvar no navegador. Exporte os chamados para preservar as alterações desta sessão.'); }
   };
-  const go = (target: Page) => { setPage(target); window.location.hash = `/${target}`; setMobileOpen(false); setNotifications(false); };
+  const go = (target: Page) => { const allowed = permitted(target) ? target : 'tickets'; setPage(allowed); window.location.hash = `/${allowed}`; setMobileOpen(false); setNotifications(false); };
   const showTickets = (filter: string = 'Todos', selectedTeam = 'Todas', days: number | null = null) => {
     setQuery(''); setStatus(filter); setPriority('Todas'); setTeam(selectedTeam); setCategory('Todas'); setCreatedDays(days); go('tickets');
   };
   const openTicket = (id: string) => { setSelectedId(id); setNotifications(false); };
-  const overdue = data.tickets.filter(t => isOpen(t) && getSla(t, now).state === 'overdue');
-  const selectedTicket = data.tickets.find(t => t.id === selectedId);
+  const overdue = (isRequester ? data.tickets.filter(t => t.requester === user.email) : data.tickets).filter(t => isOpen(t) && getSla(t, now).state === 'overdue');
+  const visibleTickets = isRequester ? data.tickets.filter(t => t.requester === user.email) : data.tickets;
+  const selectedTicket = visibleTickets.find(t => t.id === selectedId);
   const info = PAGE_INFO[page];
-  const filtered = useMemo(() => data.tickets.filter(t => {
+  const filtered = useMemo(() => visibleTickets.filter(t => {
     const text = normalize(`${t.id} ${t.title} ${t.requester} ${t.description}`);
     return (!query || text.includes(normalize(query))) &&
       (status === 'Todos' || (status === 'Abertos' ? isOpen(t) : status === 'Vencidos' ? isOpen(t) && getSla(t, now).state === 'overdue' : t.status === status)) &&
       (priority === 'Todas' || priority === t.priority) && (team === 'Todas' || t.team === team) &&
       (category === 'Todas' || t.category === category) && (!createdDays || Date.parse(t.createdAt) >= now.getTime() - createdDays * 86_400_000);
-  }), [data.tickets, query, status, priority, team, category, createdDays, now]);
+  }), [visibleTickets, query, status, priority, team, category, createdDays, now]);
   const exportTickets = (tickets: Ticket[]) => {
     const url = URL.createObjectURL(new Blob([toCsv(tickets)], { type: 'text/csv;charset=utf-8;' }));
     const a = document.createElement('a'); a.href = url; a.download = `st1-connect-chamados-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000); setToast(`${tickets.length} chamados exportados.`);
   };
-  const onTicketSave = (ticket: Ticket) => { update({ ...data, tickets: data.tickets.map(t => t.id === ticket.id ? ticket : t) }); setToast('Chamado atualizado.'); };
+  const onTicketSave = (ticket: Ticket) => { if (!visibleTickets.some(t => t.id === ticket.id)) return; update({ ...data, tickets: data.tickets.map(t => t.id === ticket.id ? ticket : t) }); setToast('Chamado atualizado.'); };
 
+  const safePage: Page = permitted(page) ? page : 'tickets';
   return <div className="app-shell">
     <a className="skip-link" href="#main-content" onClick={e => { e.preventDefault(); const main = document.getElementById('main-content'); main?.focus(); main?.scrollIntoView({ block: 'start' }); }}>Pular para o conteúdo</a>
     {mobileOpen && <button className="sidebar-backdrop" aria-label="Fechar navegação" onClick={() => setMobileOpen(false)} />}
@@ -136,10 +146,10 @@ export default function App() {
       <a className="brand" href="#/overview" onClick={() => go('overview')} aria-label="ST1 Connect, início">
         <span className="brand-st1">st<span>1</span><i /></span><span className="brand-divider" /><span className="brand-connect">connect<span>CENTRAL DE SERVIÇOS</span></span>
       </a>
-      <button className="workspace-switch" onClick={() => go('settings')}><span className="workspace-logo"><Network size={19} /></span><span><b>{data.settings.workspace}</b><small>Workspace da equipe</small></span><ChevronsUpDown size={15} /></button>
+      <button className="workspace-switch" onClick={() => setProfileOpen(true)}><span className="workspace-logo"><Network size={19} /></span><span><b>{data.settings.workspace}</b><small>Workspace da equipe</small></span><ChevronsUpDown size={15} /></button>
       <div className="nav-section-label">PRINCIPAL</div>
       <nav>
-        {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).map(p => {
+        {(['overview', 'tickets', 'assets', 'knowledge'] as Page[]).filter(permitted).map(p => {
           const Icon = PAGE_INFO[p].icon;
           return <a key={p} href={`#/${p}`} onClick={() => { if (p === 'tickets') showTickets(); else go(p); }} className={`nav-item ${page === p ? 'active' : ''}`} aria-current={page === p ? 'page' : undefined}>
             <Icon size={19} /><span>{p === 'tickets' ? 'Chamados' : p === 'assets' ? 'Ativos' : PAGE_INFO[p].title}</span>{p === 'tickets' && <b className="nav-count">{data.tickets.filter(isOpen).length}</b>}
@@ -147,10 +157,10 @@ export default function App() {
         })}
       </nav>
       <div className="nav-section-label management-label">GESTÃO</div>
-      <nav>{(['teams', 'reports', 'settings'] as Page[]).map(p => { const Icon = PAGE_INFO[p].icon; return <a key={p} href={`#/${p}`} onClick={() => go(p)} className={`nav-item ${page === p ? 'active' : ''}`} aria-current={page === p ? 'page' : undefined}><Icon size={19} /><span>{PAGE_INFO[p].title}</span></a>; })}</nav>
+      <nav>{(['teams', 'reports', 'settings'] as Page[]).filter(permitted).map(p => { const Icon = PAGE_INFO[p].icon; return <a key={p} href={`#/${p}`} onClick={() => go(p)} className={`nav-item ${page === p ? 'active' : ''}`} aria-current={page === p ? 'page' : undefined}><Icon size={19} /><span>{PAGE_INFO[p].title}</span></a>; })}</nav>
       <div className="sidebar-bottom">
         <div className="help-card"><div className="help-symbol"><Sparkles size={19} /></div><b>Conhecimento conecta.</b><p>Encontre orientações e resolva dúvidas com mais autonomia.</p><button onClick={() => go('knowledge')}>Explorar a base <ArrowUpRight size={15} /></button></div>
-        <button className="sidebar-profile" onClick={() => go('settings')}><span className="avatar profile-avatar">GC</span><span><b>Gestão Connect</b><small>Perfil de demonstração</small></span><Ellipsis size={19} /></button>
+        <button className="sidebar-profile" onClick={() => setProfileOpen(true)}><span className="avatar profile-avatar">{user.name.slice(0,2).toUpperCase()}</span><span><b>{user.name}</b><small>{user.role}</small></span><Ellipsis size={19} /></button>
       </div>
     </aside>
 
@@ -163,25 +173,26 @@ export default function App() {
           <div className="notification-area"><button className="icon-button notification-button" aria-label={`Notificações: ${overdue.length} chamados vencidos`} aria-expanded={notifications} onClick={() => setNotifications(!notifications)}><Bell size={20} />{overdue.length > 0 && <i />}</button>
             {notifications && <><button className="popover-dismiss" aria-label="Fechar notificações" onClick={() => setNotifications(false)} /><section className="notifications-popover"><div className="panel-head"><h3>Precisa de atenção</h3><span className="badge red">{overdue.length}</span></div>{overdue.length ? overdue.slice(0, 5).map(t => <button key={t.id} onClick={() => openTicket(t.id)}><span className="notification-dot" /><span><b>{t.title}</b><small>{t.id} · Prazo vencido</small></span><ChevronRight size={15} /></button>) : <p className="muted">Nenhum chamado vencido neste momento.</p>}<button className="notification-footer" onClick={() => showTickets('Vencidos')}>Ver fila de atenção <ArrowRight size={15} /></button></section></>}
           </div>
-          <span className="topbar-divider" /><button className="avatar topbar-avatar" aria-label="Abrir configurações do perfil demonstrativo" onClick={() => go('settings')}>GC</button>
+          <span className="topbar-divider" /><button className="avatar topbar-avatar" aria-label="Gerenciar meu acesso" onClick={() => setProfileOpen(true)}>{user.name.slice(0,2).toUpperCase()}</button>
         </div>
       </header>
 
       <main id="main-content" className="main-content" tabIndex={-1}>
         {storageIssue && <div className="storage-warning" role="alert"><TriangleAlert size={18} /><span>{storageIssue}</span><button className="btn btn-ghost" onClick={() => exportTickets(data.tickets)}>Exportar</button></div>}
-        <div className="page-header"><div><div className="page-eyebrow">ST1 CONNECT <span>/</span> {page === 'overview' ? 'PAINEL OPERACIONAL' : 'CENTRAL DE SERVIÇOS'}</div><h1>{info.title}<span className="heading-dot">.</span></h1><p>{info.description}</p></div><div className="page-actions">{(page === 'tickets' || page === 'overview') && <button className="btn btn-secondary export-top" onClick={() => exportTickets(page === 'tickets' ? filtered : data.tickets)}><ArrowDownToLine size={16} />Exportar</button>}{page !== 'settings' && <button className="btn btn-primary" onClick={() => setNewTicket({})}><Plus size={18} />Novo chamado</button>}</div></div>
-        {page === 'overview' && <Dashboard tickets={data.tickets} assetsCount={data.assets.length} now={now} onOpen={openTicket} onFilter={showTickets} onPage={go} onNew={() => setNewTicket({})} />}
-        {page === 'tickets' && <TicketsPage tickets={filtered} allTickets={data.tickets} now={now} onOpen={openTicket} status={status} onStatus={setStatus} query={query} setQuery={setQuery} priority={priority} setPriority={setPriority} team={team} setTeam={setTeam} category={category} setCategory={setCategory} createdDays={createdDays} clearDates={() => setCreatedDays(null)} onClear={() => showTickets()} />}
-        {page === 'assets' && <AssetsPage data={data} onUpdate={update} onOpenTicket={openTicket} notify={setToast} />}
-        {page === 'knowledge' && <KnowledgePage onNewTicket={(title, chosenCategory) => setNewTicket({ title, category: chosenCategory })} />}
-        {page === 'teams' && <TeamsPage tickets={data.tickets} onTeamClick={chosenTeam => showTickets('Abertos', chosenTeam)} />}
-        {page === 'reports' && <ReportsPage tickets={data.tickets} onOpenTicket={openTicket} />}
-        {page === 'settings' && <SettingsPage data={data} onUpdate={update} notify={setToast} />}
+        <div className="page-header"><div><div className="page-eyebrow">ST1 CONNECT <span>/</span> {page === 'overview' ? 'PAINEL OPERACIONAL' : 'CENTRAL DE SERVIÇOS'}</div><h1>{info.title}<span className="heading-dot">.</span></h1><p>{info.description}</p></div><div className="page-actions">{!isRequester && (safePage === 'tickets' || safePage === 'overview') && <button className="btn btn-secondary export-top" onClick={() => exportTickets(page === 'tickets' ? filtered : data.tickets)}><ArrowDownToLine size={16} />Exportar</button>}{safePage !== 'settings' && <button className="btn btn-primary" onClick={() => setNewTicket({})}><Plus size={18} />Novo chamado</button>}</div></div>
+        {safePage === 'overview' && <Dashboard tickets={data.tickets} assetsCount={data.assets.length} now={now} onOpen={openTicket} onFilter={showTickets} onPage={go} onNew={() => setNewTicket({})} />}
+        {safePage === 'tickets' && <TicketsPage tickets={filtered} allTickets={visibleTickets} now={now} onOpen={openTicket} status={status} onStatus={setStatus} query={query} setQuery={setQuery} priority={priority} setPriority={setPriority} team={team} setTeam={setTeam} category={category} setCategory={setCategory} createdDays={createdDays} clearDates={() => setCreatedDays(null)} onClear={() => showTickets()} />}
+        {safePage === 'assets' && <AssetsPage data={data} onUpdate={update} onOpenTicket={openTicket} notify={setToast} />}
+        {safePage === 'knowledge' && <KnowledgePage onNewTicket={(title, chosenCategory) => setNewTicket({ title, category: chosenCategory })} />}
+        {safePage === 'teams' && <TeamsPage tickets={data.tickets} onTeamClick={chosenTeam => showTickets('Abertos', chosenTeam)} />}
+        {safePage === 'reports' && <ReportsPage tickets={data.tickets} onOpenTicket={openTicket} />}
+        {safePage === 'settings' && <SettingsPage data={data} onUpdate={update} notify={setToast} />}
         <footer className="app-footer"><span><span className="footer-mark">st1</span> connect <span className="footer-divider">/</span> Pessoas, processos e soluções.</span><span>Dados demonstrativos · Armazenamento neste navegador <ShieldCheck size={13} /></span></footer>
       </main>
     </div>
-    {newTicket && <NewTicketDialog data={data} initial={newTicket} onClose={() => setNewTicket(null)} onCreate={ticket => { update({ ...data, tickets: [ticket, ...data.tickets] }); setNewTicket(null); setSelectedId(ticket.id); setToast(`Chamado ${ticket.id} criado.`); }} />}
-    {selectedTicket && !newTicket && <TicketDetail key={selectedTicket.id} ticket={selectedTicket} data={data} onClose={() => setSelectedId(null)} onSave={onTicketSave} />}
+    {newTicket && <NewTicketDialog data={data} currentUser={user} initial={newTicket} onClose={() => setNewTicket(null)} onCreate={ticket => { update({ ...data, tickets: [ticket, ...data.tickets] }); setNewTicket(null); setSelectedId(ticket.id); setToast(`Chamado ${ticket.id} criado.`); }} />}
+    {selectedTicket && !newTicket && <TicketDetail key={selectedTicket.id} ticket={selectedTicket} data={data} canEdit={canEditTickets} currentUser={user} onClose={() => setSelectedId(null)} onSave={onTicketSave} />}
+    {profileOpen && <ProfilePanel user={user} onLogout={onLogout} onClose={() => setProfileOpen(false)}/>}
     {toast && <div className="toast" role="status"><span><Check size={17} /></span>{toast}<button aria-label="Fechar aviso" onClick={() => setToast('')}><X size={15} /></button></div>}
   </div>;
 }
@@ -297,7 +308,7 @@ function Modal({ children, onClose, className = '', labelledBy }: { children: Re
   useEffect(() => { const el = ref.current; if (el && !el.open) el.showModal(); return () => { if (el?.open) el.close(); }; }, []);
   return <dialog ref={ref} className={`app-dialog ${className}`} aria-labelledby={labelledBy} onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose(); } }}>{children}</dialog>;
 }
-function NewTicketDialog({ data, initial, onClose, onCreate }: { data: AppData; initial: { title?: string; category?: Category }; onClose: () => void; onCreate: (t: Ticket) => void }) {
+function NewTicketDialog({ data, currentUser, initial, onClose, onCreate }: { data: AppData; currentUser: Account; initial: { title?: string; category?: Category }; onClose: () => void; onCreate: (t: Ticket) => void }) {
   const [chosenCategory, setChosenCategory] = useState<Category>(initial.category || 'Sistemas e acessos');
   const [chosenPriority, setChosenPriority] = useState<Priority>('Média');
   const [error, setError] = useState('');
@@ -307,13 +318,13 @@ function NewTicketDialog({ data, initial, onClose, onCreate }: { data: AppData; 
     const now = new Date().toISOString();
     const lastNumber = Math.max(1000, ...data.tickets.map(t => Number(/^ST1-(\d+)$/.exec(t.id)?.[1] || 0)).filter(Number.isSafeInteger));
     if (!Number.isSafeInteger(lastNumber + 1) || data.tickets.some(t => t.id === `ST1-${lastNumber + 1}`)) { setError('Não foi possível gerar um número único para o chamado.'); return; }
-    const ticket: Ticket = { id: `ST1-${lastNumber + 1}`, title, description, type: form.get('type') as Ticket['type'], category: chosenCategory, priority: chosenPriority, status: 'Novo', requester: String(form.get('requester') || '').trim() || 'Equipe interna', team: categoryTeam(chosenCategory), assignee: null, assetId: String(form.get('asset') || '') || null, createdAt: now, updatedAt: now, dueAt: new Date(Date.parse(now) + data.settings.slaHours[chosenPriority] * 3_600_000).toISOString(), resolvedAt: null, pausedAt: null, pausedMs: 0, history: [{ id: makeId('event'), at: now, author: 'Gestão Connect', text: `Chamado criado e encaminhado à equipe ${categoryTeam(chosenCategory)}.`, kind: 'event' }] };
+    const ticket: Ticket = { id: `ST1-${lastNumber + 1}`, title, description, type: form.get('type') as Ticket['type'], category: chosenCategory, priority: chosenPriority, status: 'Novo', requester: currentUser.role === 'Solicitante' ? currentUser.email : String(form.get('requester') || '').trim() || currentUser.email, team: categoryTeam(chosenCategory), assignee: null, assetId: String(form.get('asset') || '') || null, createdAt: now, updatedAt: now, dueAt: new Date(Date.parse(now) + data.settings.slaHours[chosenPriority] * 3_600_000).toISOString(), resolvedAt: null, pausedAt: null, pausedMs: 0, history: [{ id: makeId('event'), at: now, author: currentUser.name, text: `Chamado criado e encaminhado à equipe ${categoryTeam(chosenCategory)}.`, kind: 'event' }] };
     onCreate(ticket);
   };
-  return <Modal onClose={onClose} labelledBy="new-ticket-title" className="new-ticket-dialog"><div className="dialog-header"><span className="dialog-icon"><TicketIcon size={22} /></span><div><span className="dialog-eyebrow">VAMOS CONECTAR UMA SOLUÇÃO</span><h2 id="new-ticket-title">Novo chamado</h2></div><button className="icon-button" onClick={onClose} aria-label="Fechar novo chamado"><X size={20} /></button></div><form onSubmit={submit}><div className="dialog-body"><div className="type-choice"><label><input type="radio" name="type" value="Incidente" defaultChecked /><span><TriangleAlert size={18} /><b>Incidente</b><small>Algo não está funcionando</small></span></label><label><input type="radio" name="type" value="Solicitação" /><span><Plus size={18} /><b>Solicitação</b><small>Preciso de um serviço ou recurso</small></span></label></div><label className="form-field">Assunto <span>*</span><input name="title" className="field" placeholder="Resuma o que você precisa" required minLength={6} maxLength={120} defaultValue={initial.title} autoFocus /></label><label className="form-field">Descrição <span>*</span><textarea name="description" className="field" placeholder="Conte o que aconteceu, o impacto e o que já foi tentado..." rows={4} required minLength={12} maxLength={5000} /></label><div className="form-grid"><label className="form-field">Categoria<select className="field" value={chosenCategory} onChange={e => setChosenCategory(e.target.value as Category)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field">Prioridade<select className="field" value={chosenPriority} onChange={e => setChosenPriority(e.target.value as Priority)}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></label><label className="form-field">Equipe solicitante<input className="field" name="requester" placeholder="Ex.: Comercial Digital" maxLength={80} required /></label><label className="form-field">Ativo relacionado <small>Opcional</small><select className="field" name="asset"><option value="">Nenhum ativo</option>{data.assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label></div><div className="routing-note"><Zap size={16} /><span>Direcionado para <b>{categoryTeam(chosenCategory)}</b> · Prazo de resolução de <b>{data.settings.slaHours[chosenPriority]} horas corridas</b>.</span></div>{error && <p className="form-error" role="alert">{error}</p>}</div><div className="dialog-footer"><span><ShieldCheck size={14} />Ambiente de demonstração</span><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary">Criar chamado <ArrowRight size={16} /></button></div></form></Modal>;
+  return <Modal onClose={onClose} labelledBy="new-ticket-title" className="new-ticket-dialog"><div className="dialog-header"><span className="dialog-icon"><TicketIcon size={22} /></span><div><span className="dialog-eyebrow">VAMOS CONECTAR UMA SOLUÇÃO</span><h2 id="new-ticket-title">Novo chamado</h2></div><button className="icon-button" onClick={onClose} aria-label="Fechar novo chamado"><X size={20} /></button></div><form onSubmit={submit}><div className="dialog-body"><div className="type-choice"><label><input type="radio" name="type" value="Incidente" defaultChecked /><span><TriangleAlert size={18} /><b>Incidente</b><small>Algo não está funcionando</small></span></label><label><input type="radio" name="type" value="Solicitação" /><span><Plus size={18} /><b>Solicitação</b><small>Preciso de um serviço ou recurso</small></span></label></div><label className="form-field">Assunto <span>*</span><input name="title" className="field" placeholder="Resuma o que você precisa" required minLength={6} maxLength={120} defaultValue={initial.title} autoFocus /></label><label className="form-field">Descrição <span>*</span><textarea name="description" className="field" placeholder="Conte o que aconteceu, o impacto e o que já foi tentado..." rows={4} required minLength={12} maxLength={5000} /></label><div className="form-grid"><label className="form-field">Categoria<select className="field" value={chosenCategory} onChange={e => setChosenCategory(e.target.value as Category)}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></label><label className="form-field">Prioridade<select className="field" value={chosenPriority} onChange={e => setChosenPriority(e.target.value as Priority)}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></label><label className="form-field">{currentUser.role === 'Solicitante' ? 'Solicitante' : 'Equipe solicitante'}<input className="field" name="requester" placeholder="Ex.: Comercial Digital" maxLength={80} defaultValue={currentUser.role === 'Solicitante' ? currentUser.email : ''} disabled={currentUser.role === 'Solicitante'} required /></label><label className="form-field">Ativo relacionado <small>Opcional</small><select className="field" name="asset"><option value="">Nenhum ativo</option>{data.assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label></div><div className="routing-note"><Zap size={16} /><span>Direcionado para <b>{categoryTeam(chosenCategory)}</b> · Prazo de resolução de <b>{data.settings.slaHours[chosenPriority]} horas corridas</b>.</span></div>{error && <p className="form-error" role="alert">{error}</p>}</div><div className="dialog-footer"><span><ShieldCheck size={14} />Ambiente de demonstração</span><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn btn-primary">Criar chamado <ArrowRight size={16} /></button></div></form></Modal>;
 }
 
-function TicketDetail({ ticket, data, onClose, onSave }: { ticket: Ticket; data: AppData; onClose: () => void; onSave: (t: Ticket) => void }) {
+function TicketDetail({ ticket, data, canEdit, currentUser, onClose, onSave }: { ticket: Ticket; data: AppData; canEdit: boolean; currentUser: Account; onClose: () => void; onSave: (t: Ticket) => void }) {
   const [nextStatus, setNextStatus] = useState<Status>(ticket.status);
   const [assignee, setAssignee] = useState(ticket.assignee || '');
   const [team, setTeam] = useState<Team>(ticket.team);
@@ -322,12 +333,12 @@ function TicketDetail({ ticket, data, onClose, onSave }: { ticket: Ticket; data:
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
   useEffect(() => { setNextStatus(ticket.status); setAssignee(ticket.assignee || ''); setTeam(ticket.team); setPriority(ticket.priority); }, [ticket]);
-  const addComment = (e: FormEvent) => { e.preventDefault(); if (!comment.trim()) return; const now = new Date().toISOString(); onSave({ ...ticket, updatedAt: now, history: [...ticket.history, { id: makeId('comment'), at: now, author: 'Gestão Connect', text: comment.trim(), kind: 'comment' }] }); setComment(''); };
+  const addComment = (e: FormEvent) => { e.preventDefault(); if (!comment.trim()) return; const now = new Date().toISOString(); onSave({ ...ticket, updatedAt: now, history: [...ticket.history, { id: makeId('comment'), at: now, author: currentUser.name, text: comment.trim(), kind: 'comment' }] }); setComment(''); };
   const save = (e: FormEvent) => {
     e.preventDefault(); setError('');
     try {
       const now = new Date(); const history = [...ticket.history];
-      const event = (text: string) => history.push({ id: makeId('event'), at: now.toISOString(), author: 'Gestão Connect', text, kind: 'event' });
+      const event = (text: string) => history.push({ id: makeId('event'), at: now.toISOString(), author: currentUser.name, text, kind: 'event' });
       if (team !== ticket.team) event(`Equipe alterada de ${ticket.team} para ${team}.`);
       if ((assignee || null) !== ticket.assignee) event(assignee ? `Chamado atribuído a ${AGENTS.find(a => a.id === assignee)?.name || assignee}.` : 'Responsável removido; o chamado permanece na fila da equipe.');
       if (priority !== ticket.priority) event(`Prioridade alterada de ${ticket.priority} para ${priority}. O prazo de resolução original foi mantido.`);
@@ -339,7 +350,7 @@ function TicketDetail({ ticket, data, onClose, onSave }: { ticket: Ticket; data:
   };
   const asset = data.assets.find(a => a.id === ticket.assetId);
   const changed = nextStatus !== ticket.status || team !== ticket.team || priority !== ticket.priority || (assignee || null) !== ticket.assignee;
-  return <Modal onClose={onClose} labelledBy="ticket-detail-title" className="ticket-detail-dialog"><div className="detail-top"><span className="detail-ticket-code"><TicketIcon size={17} />{ticket.id}</span><StatusBadge status={ticket.status} /><span className="detail-type">{ticket.type}</span><button className="icon-button" aria-label="Fechar detalhes do chamado" onClick={onClose}><X size={21} /></button></div><div className="detail-heading"><h2 id="ticket-detail-title">{ticket.title}</h2><p>Aberto por <b>{ticket.requester}</b> em {fmtDate(ticket.createdAt, true)}</p></div><div className="detail-layout"><div className="detail-main"><section className="detail-section"><h3>Descrição do chamado</h3><p className="ticket-description">{ticket.description}</p><div className="detail-tags"><span>{ticket.category}</span>{asset && <span><Monitor size={13} />{asset.name}</span>}</div></section><section className="detail-section history-section"><h3>Histórico de atendimento <span>{ticket.history.length}</span></h3><div className="history-list">{ticket.history.map(h => <article className={`history-item history-${h.kind}`} key={h.id}><span className="history-icon">{h.kind === 'comment' ? <MessageSquare size={14} /> : h.kind === 'solution' ? <CheckCheck size={15} /> : <LoaderCircle size={13} />}</span><div><header><b>{h.author}</b><time dateTime={h.at}>{fmtDate(h.at, true)}</time></header><p>{h.text}</p>{h.kind === 'solution' && <span className="solution-tag">Solução registrada</span>}</div></article>)}</div><form className="comment-form" onSubmit={addComment}><label htmlFor="ticket-comment">Adicionar uma interação</label><textarea id="ticket-comment" value={comment} onChange={e => setComment(e.target.value)} placeholder="Registre uma atualização para o time..." maxLength={3000} rows={3} required /><div><span>Histórico local da demonstração</span><button className="btn btn-primary" disabled={!comment.trim()} type="submit"><Send size={15} />Registrar</button></div></form></section></div><aside className="detail-sidebar"><form onSubmit={save}><div className="sla-detail-box"><Clock3 size={19} /><span>Prazo de resolução<b>{fmtDate(effectiveDueAt(ticket), true)}</b><SlaLabel ticket={ticket} now={new Date()} /></span></div><label className="form-field">Situação<select className="field" value={nextStatus} onChange={e => setNextStatus(e.target.value as Status)}>{STATUSES.map(s => <option key={s} disabled={s === 'Fechado' && ticket.status !== 'Resolvido' && ticket.status !== 'Fechado'}>{s}</option>)}</select></label><label className="form-field">Equipe responsável<select className="field" value={team} onChange={e => { setTeam(e.target.value as Team); setAssignee(''); }}>{TEAMS.map(t => <option key={t}>{t}</option>)}</select></label><label className="form-field">Responsável<select className="field" value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">Não atribuído</option>{AGENTS.filter(a => a.team === team).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label className="form-field">Prioridade<select className="field" value={priority} onChange={e => setPriority(e.target.value as Priority)}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></label>{nextStatus !== ticket.status && (nextStatus === 'Resolvido' || nextStatus === 'Pendente') && <label className="form-field">{nextStatus === 'Resolvido' ? 'Solução aplicada' : 'Motivo da pendência'} <span>*</span><textarea className="field" value={note} onChange={e => setNote(e.target.value)} required rows={4} minLength={3} maxLength={3000} placeholder={nextStatus === 'Resolvido' ? 'Como o chamado foi resolvido?' : 'Por que o atendimento precisa aguardar?'} /></label>}{error && <p className="form-error" role="alert">{error}</p>}<button className="btn btn-primary detail-save" disabled={!changed} type="submit"><Check size={16} />Salvar alterações</button><p className="detail-tip"><CircleHelp size={14} />A pendência pausa o SLA. Resolvido aguarda validação para fechar.</p></form></aside></div></Modal>;
+  return <Modal onClose={onClose} labelledBy="ticket-detail-title" className="ticket-detail-dialog"><div className="detail-top"><span className="detail-ticket-code"><TicketIcon size={17} />{ticket.id}</span><StatusBadge status={ticket.status} /><span className="detail-type">{ticket.type}</span><button className="icon-button" aria-label="Fechar detalhes do chamado" onClick={onClose}><X size={21} /></button></div><div className="detail-heading"><h2 id="ticket-detail-title">{ticket.title}</h2><p>Aberto por <b>{ticket.requester}</b> em {fmtDate(ticket.createdAt, true)}</p></div><div className="detail-layout"><div className="detail-main"><section className="detail-section"><h3>Descrição do chamado</h3><p className="ticket-description">{ticket.description}</p><div className="detail-tags"><span>{ticket.category}</span>{asset && <span><Monitor size={13} />{asset.name}</span>}</div></section><section className="detail-section history-section"><h3>Histórico de atendimento <span>{ticket.history.length}</span></h3><div className="history-list">{ticket.history.map(h => <article className={`history-item history-${h.kind}`} key={h.id}><span className="history-icon">{h.kind === 'comment' ? <MessageSquare size={14} /> : h.kind === 'solution' ? <CheckCheck size={15} /> : <LoaderCircle size={13} />}</span><div><header><b>{h.author}</b><time dateTime={h.at}>{fmtDate(h.at, true)}</time></header><p>{h.text}</p>{h.kind === 'solution' && <span className="solution-tag">Solução registrada</span>}</div></article>)}</div><form className="comment-form" onSubmit={addComment}><label htmlFor="ticket-comment">Adicionar uma interação</label><textarea id="ticket-comment" value={comment} onChange={e => setComment(e.target.value)} placeholder="Registre uma atualização para o time..." maxLength={3000} rows={3} required /><div><span>Histórico local da demonstração</span><button className="btn btn-primary" disabled={!comment.trim()} type="submit"><Send size={15} />Registrar</button></div></form></section></div>{canEdit && <aside className="detail-sidebar"><form onSubmit={save}><div className="sla-detail-box"><Clock3 size={19} /><span>Prazo de resolução<b>{fmtDate(effectiveDueAt(ticket), true)}</b><SlaLabel ticket={ticket} now={new Date()} /></span></div><label className="form-field">Situação<select className="field" value={nextStatus} onChange={e => setNextStatus(e.target.value as Status)}>{STATUSES.map(s => <option key={s} disabled={s === 'Fechado' && ticket.status !== 'Resolvido' && ticket.status !== 'Fechado'}>{s}</option>)}</select></label><label className="form-field">Equipe responsável<select className="field" value={team} onChange={e => { setTeam(e.target.value as Team); setAssignee(''); }}>{TEAMS.map(t => <option key={t}>{t}</option>)}</select></label><label className="form-field">Responsável<select className="field" value={assignee} onChange={e => setAssignee(e.target.value)}><option value="">Não atribuído</option>{AGENTS.filter(a => a.team === team).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label className="form-field">Prioridade<select className="field" value={priority} onChange={e => setPriority(e.target.value as Priority)}>{PRIORITIES.map(p => <option key={p}>{p}</option>)}</select></label>{nextStatus !== ticket.status && (nextStatus === 'Resolvido' || nextStatus === 'Pendente') && <label className="form-field">{nextStatus === 'Resolvido' ? 'Solução aplicada' : 'Motivo da pendência'} <span>*</span><textarea className="field" value={note} onChange={e => setNote(e.target.value)} required rows={4} minLength={3} maxLength={3000} placeholder={nextStatus === 'Resolvido' ? 'Como o chamado foi resolvido?' : 'Por que o atendimento precisa aguardar?'} /></label>}{error && <p className="form-error" role="alert">{error}</p>}<button className="btn btn-primary detail-save" disabled={!changed} type="submit"><Check size={16} />Salvar alterações</button><p className="detail-tip"><CircleHelp size={14} />A pendência pausa o SLA. Resolvido aguarda validação para fechar.</p></form></aside>}</div></Modal>;
 }
 
 function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
