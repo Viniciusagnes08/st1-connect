@@ -88,3 +88,12 @@ A primeira migração foi executada pela integração Supabase e está registrad
 ## Estado de conclusão
 
 A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase dedicado e a migração inicial já estão criados e verificados**, sem ligação ao ST1 Academy. Ainda falta conectar a credencial protegida ao Vercel Preview e realizar testes reais de dois usuários e de escrita/leitura entre dispositivos antes do merge.
+
+## Homologação da conexão (30/10/2026)
+
+- Banco Supabase **ST1 Connect** restaurado e verificado como `ACTIVE_HEALTHY`.
+- Schema privado `st1_bi`: seis tabelas, inicialmente sem solicitações ou usuários; `anon` e `authenticated` não possuem uso do schema.
+- Criada role de runtime `st1_connect_runtime`, membro da role limitada `st1_connect_preview`; sem privilégios administrativos de banco.
+- Configuradas no Vercel **somente na branch Preview** `feature/st1-connect-bi-foundation` as variáveis `DATABASE_URL` (sensitive, conexão Postgres direta) e `BI_CONNECT_ENABLED=true`.
+- **Importante:** endpoint direto do Supabase é IPv6 no plano gratuito. A conexão precisa ser testada nas Vercel Functions. Se a infraestrutura não alcançar IPv6, usar o **host exato** do Transaction Pooler mostrado no diálogo Connect do Supabase, porta 6543. A documentação oficial alerta para não inferir o host pelo nome da região.
+- Nenhuma variável de banco foi criada para produção. A liberação depende de teste real de `/api/health`, gravação e leitura com dois usuários autorizados.
