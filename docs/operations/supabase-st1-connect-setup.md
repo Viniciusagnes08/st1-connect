@@ -97,3 +97,16 @@ A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase d
 - Configuradas no Vercel **somente na branch Preview** `feature/st1-connect-bi-foundation` as variáveis `DATABASE_URL` (sensitive, conexão Postgres direta) e `BI_CONNECT_ENABLED=true`.
 - **Importante:** endpoint direto do Supabase é IPv6 no plano gratuito. A conexão precisa ser testada nas Vercel Functions. Se a infraestrutura não alcançar IPv6, usar o **host exato** do Transaction Pooler mostrado no diálogo Connect do Supabase, porta 6543. A documentação oficial alerta para não inferir o host pelo nome da região.
 - Nenhuma variável de banco foi criada para produção. A liberação depende de teste real de `/api/health`, gravação e leitura com dois usuários autorizados.
+
+## Diagnóstico real do Vercel Preview (30/10/2026)
+
+- O Supabase **ST1 Connect** foi restaurado e está `ACTIVE_HEALTHY`; SQL confirmado com seis tabelas e nenhum registro operacional.
+- A role de aplicação `st1_connect_runtime` existe, tem LOGIN, não possui `BYPASSRLS`, e herda privilégios limitados de `st1_connect_preview`.
+- A branch Vercel Preview possui `DATABASE_URL` do tipo **sensitive** e `BI_CONNECT_ENABLED=true`; **produção não recebeu essas variáveis**.
+- Novo deployment Preview `0ce333dc537350226e45626687e4ba5f5b420286` retornou estado **READY**; porém a chamada real de `/api/health` respondeu `{"service":"bi-foundation","database":"unavailable"}`.
+- A URL atualmente configurada é conexão PostgreSQL **direta (IPv6)**; para Vercel Functions o Supabase recomenda **Transaction Pooler**, porta **6543**, configuração `prepare:false` e pool de tamanho **1** (já adaptados no código).
+- O host exato do Pooler precisa ser obtido em **Supabase Dashboard → ST1 Connect → Connect → Transaction pooler**. A documentação oficial adverte expressamente que **o host não pode ser inferido somente da região**.
+- A integração automática **não deve ser descrita como concluída** até que a variável privada `DATABASE_URL` seja atualizada com a string correta, o Preview seja reconstruído e `/api/health` retorne `database:ready`.
+- Credenciais **não podem ser copiadas para GitHub, screenshots, chat ou campos VITE_**. Para completar manualmente: no Supabase, obtenha o host exato no Connect; no Vercel, Settings → Environment Variables → DATABASE_URL (Preview, branch BI), substitua a string usando a credencial mantida em meio seguro. Se a senha da role de aplicação não estiver disponível, configure/rotacione-a por meios privados autorizados, atualizando ambos os lados **sem divulgar senha nesta conversa**.
+- Após conectar: validar dois logins, idempotência de POST, leitura de chamados de outros usuários com 404, membership BI e rollback. Somente depois considerar PR #1 apto ao merge.
+- Fonte: https://supabase.com/docs/guides/database/connecting-to-postgres
