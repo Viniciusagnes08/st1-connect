@@ -10,7 +10,7 @@ export function requireDatabaseUrl(env = process.env) {
 
 export function databaseOptions(env = process.env) {
   return {
-    max: 3,
+    max: 1,
     connect_timeout: 6,
     idle_timeout: 20,
     ssl: {
