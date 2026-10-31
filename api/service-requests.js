@@ -13,6 +13,18 @@ async function departmentHandler(req,res,actor){
    const data=await db.query('SELECT area,department_role AS role,active FROM st1_services.department_memberships WHERE user_id=$1 AND active=true ORDER BY area',[actor.id]);
    return res.status(200).json({items:data.rows,areas:DEPARTMENT_AREAS});
   }
+  if(req.query.action==='assignees'){
+   const area=String(req.query.area||'');
+   if(!allowedDepartment(area))return res.status(400).json({error:'Departamento inválido.'});
+   if(!actor.isMaster){
+    const membership=await db.query('SELECT department_role FROM st1_services.department_memberships WHERE user_id=$1 AND area=$2 AND active=true',[actor.id,area]);
+    if(!membership.rows.some(x=>['gestor','supervisor'].includes(x.department_role)))return res.status(403).json({error:'Acesso de gestão não autorizado.'});
+   }
+   const rows=await db.query('SELECT user_id,area,department_role AS role,active FROM st1_services.department_memberships WHERE area=$1 AND active=true',[area]);
+   const directory=await loadDirectory();
+   return res.status(200).json({items:rows.rows.filter(m=>directory.some(u=>u.id===m.user_id&&u.active)).map(m=>({user_id:m.user_id,area:m.area,role:m.role,active:m.active})),
+    users:directory.filter(u=>u.active&&rows.rows.some(m=>m.user_id===u.id)).map(u=>({id:u.id,name:u.name,role:u.role,active:u.active}))});
+  }
   if(req.query.action==='members'){
    if(!actor.isMaster)return res.status(403).json({error:'Somente Admin Master.'});
    const data=await db.query('SELECT user_id,area,department_role AS role,active,updated_at FROM st1_services.department_memberships ORDER BY area,user_id');
@@ -53,7 +65,7 @@ export default async function handler(req,res) {
   try {
     ensureEnabled();
     const principal=await currentPrincipal(req);
-    if(req.query.action==='mine'||req.query.action==='members'||req.query.action==='department-member')return departmentHandler(req,res,principal);
+    if(req.query.action==='mine'||req.query.action==='members'||req.query.action==='assignees'||req.query.action==='department-member')return departmentHandler(req,res,principal);
     if(req.method==='GET') {
       if(req.query.action==='catalog')return res.status(200).json({forms:SERVICE_FORMS});
       const db=await connection();
