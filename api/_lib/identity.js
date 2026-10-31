@@ -1,4 +1,5 @@
 import { decodeSession } from './auth-session.js';
+import { isMasterAdmin } from './master-admin.js';
 
 const ROLES = new Set(['Administrador','Supervisor','Técnico','Solicitante']);
 
@@ -40,7 +41,7 @@ export async function currentPrincipal(req, env = process.env, fetcher = fetch) 
     error.status=401;
     throw error;
   }
-  return {id:person.id,name:person.name,email:person.email,role:person.role,active:true};
+  return {id:person.id,name:person.name,email:person.email,role:person.role,active:true,isMaster:isMasterAdmin(person,env)};
 }
 
 export function publicDirectory(users) {
