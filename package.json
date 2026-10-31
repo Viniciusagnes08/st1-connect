@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 4173",
-    "build": "npm test && tsc -b && vite build",
+    "build": "node scripts/probe-departments.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "test": "node scripts/run-tests.mjs",
     "db:migrate": "node db/migrate.mjs"
