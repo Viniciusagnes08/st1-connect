@@ -49,3 +49,12 @@ export const fetchDepartmentQueue=(area:string)=>fetchServiceRequests(('departme
 export const assignDepartmentRequest=(id:string,assignedTo:string)=>request<{request:ServiceRequest}>('/api/service-requests',{method:'PATCH',body:JSON.stringify({action:'assign',id,assignedTo})});
 
 export const fetchDepartmentAssignees=(area:string)=>request<{items:DepartmentMembership[];users:DepartmentMember[]}>('/api/service-requests?action=assignees&area='+encodeURIComponent(area));
+
+export type DepartmentAccessAudit={
+ actor_user_id:string;target_user_id:string;area:string;
+ event_type:'granted'|'role_changed'|'revoked'|'reactivated';
+ previous_role:string|null;next_role:string;previous_active:boolean|null;
+ next_active:boolean;occurred_at:string;
+};
+export const fetchDepartmentAudit=async()=>
+ request<{events:DepartmentAccessAudit[]}>('/api/service-requests?action=department-audit');
