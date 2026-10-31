@@ -47,7 +47,7 @@
 - [x] Disable delegated edits and toggles for existing admin accounts.
 - [x] Add isolated CI workflow for `npm ci`, `npm test` and `tsc -b && vite build`.
 - [x] Confirm Vite/TypeScript Preview build `READY` after security edits.
-- [ ] Obtain successful full authorization test suite result and inspect workflow logs (connector currently cannot read build events).
+- [x] Obtain successful full authorization suite and build result: Vercel Preview `READY` at commit `dd5660ca42210323c5ff78b726278e59c2e0ca26`, whose build script ran `npm test && tsc -b && vite build`. Detailed build events remain unavailable in the connector.
 - [ ] Run manual positive/negative tests with two non-production accounts in the Preview.
 - [ ] Promote only after all tests pass; do not merge this branch into main until then.
 
