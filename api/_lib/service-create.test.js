@@ -61,20 +61,30 @@ test('mesma chave de idempotência não duplica chamados e não aceita payload d
   await assert.rejects(()=>createServiceRequest(db,principal,{...payload,title:'Assunto diferente de teste'},'unique_request_key_123456'),e=>e.status===409);
 });
 
-test('atualização de atendimento exige Master autenticado e registra a transição',async()=>{
+test('atualização exige autorização antes de qualquer escrita e registra a transição autorizada',async()=>{
   const master={...principal,role:'Administrador',isMaster:true};
   const calls=[];
   const db={query:async(sql,params=[])=>{
     calls.push({sql,params});
-    if(sql.includes('FOR UPDATE'))return {rowCount:1,rows:[{state:'Novo'}]};
-    if(sql.includes('UPDATE st1_services.requests'))return {rowCount:1,rows:[{id,protocol:'ST1-S-000012',area:'geral',state:'Em triagem'}]};
+    if(sql.includes('FOR UPDATE'))return {rowCount:1,rows:[{
+      state:'Novo',area:'crm',confidential:false,
+      requester_user_id:'another-requester',assigned_to_user_id:null,
+    }]};
+    if(sql.includes('FROM st1_services.department_memberships'))return {rowCount:0,rows:[]};
+    if(sql.includes('UPDATE st1_services.requests'))return {rowCount:1,rows:[{id,protocol:'ST1-S-000012',area:'crm',state:'Em triagem'}]};
     if(sql.includes('INSERT INTO st1_services.request_events'))return {rowCount:1,rows:[]};
     throw Error('Unexpected SQL '+sql.slice(0,90));
   }};
   await assert.rejects(()=>changeServiceRequest(db,principal,id,'Em triagem'),e=>e.status===403);
-  assert.equal(calls.length,0);
+  assert.equal(calls.filter(c=>c.sql.includes('UPDATE st1_services.requests')).length,0);
+  assert.equal(calls.filter(c=>c.sql.includes('INSERT INTO st1_services.request_events')).length,0);
   const saved=await changeServiceRequest(db,master,id,'Em triagem','Iniciamos a análise');
   assert.equal(saved.state,'Em triagem');
   assert.equal(calls.filter(c=>c.sql.includes('UPDATE st1_services.requests')).length,1);
-  assert.equal(calls.filter(c=>c.sql.includes('INSERT INTO st1_services.request_events')).length,1);
+  const events=calls.filter(c=>c.sql.includes('INSERT INTO st1_services.request_events'));
+  assert.equal(events.length,1);
+  const payload=JSON.parse(events[0].params[2]);
+  assert.equal(payload.from,'Novo');
+  assert.equal(payload.to,'Em triagem');
+  assert.equal(payload.reason,'Iniciamos a análise');
 });
