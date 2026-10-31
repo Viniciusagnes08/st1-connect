@@ -45,7 +45,7 @@ async function getKeys(fetcher, nowSec) {
  * Verifica assinatura, issuer, audience, expiração e identidade Google.
  * Nunca confiar em nome, e-mail ou papel fornecidos diretamente pelo cliente.
  */
-export async function verifyGoogleCredential(idToken, clientId, fetcher = fetch, nowSec = Math.floor(Date.now()/1000)) {
+export async function verifyGoogleCredential(idToken, clientId, fetcher = fetch, nowSec = Math.floor(Date.now()/1000), expectedNonce = null) {
   if (typeof clientId !== 'string' || !/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(clientId))
     throw Object.assign(new Error('Login com Google ainda não configurado.'),{status:503});
   if (typeof idToken !== 'string' || idToken.length > 8192)
@@ -70,6 +70,7 @@ export async function verifyGoogleCredential(idToken, clientId, fetcher = fetch,
   } catch { throw authError(); }
   if (!verified || !['accounts.google.com','https://accounts.google.com'].includes(claims.iss) ||
       claims.aud !== clientId ||
+      (expectedNonce !== null && (typeof expectedNonce !== 'string' || !expectedNonce || claims.nonce !== expectedNonce)) ||
       !Number.isSafeInteger(claims.exp) || claims.exp <= nowSec ||
       !Number.isSafeInteger(claims.iat) || claims.iat > nowSec + 60 ||
       (claims.nbf !== undefined && claims.nbf > nowSec + 60) ||
@@ -98,4 +99,23 @@ export function googleIdentityAllowed(identity, invited, env = process.env) {
     return true;
   return Boolean(invited && invited.role === 'Solicitante' && invited.googlePending === true &&
     invited.email === email && invited.active === true && email.endsWith('@gmail.com'));
+}
+
+/**
+ * A cada novo login revalida a identidade assinada pelo Google.
+ * Corporate: o hosted domain deve continuar sendo o dominio ST1 permitido.
+ * Gmail pessoal: a conta vinculada deve continuar ativa e Solicitante.
+ * Nunca promover papeis a partir das claims do Google.
+ */
+export function googleReturningIdentityAllowed(identity, linked, env = process.env) {
+  const email=identity?.email;
+  if(!validEmail(email) || !linked || linked.active!==true ||
+    linked.googleAuthOnly!==true || linked.googleSub!==identity?.sub ||
+    linked.email!==email) return false;
+  const corporateDomain=String(env.ST1_GOOGLE_WORKSPACE_DOMAIN||'st1.net.br').trim().toLowerCase();
+  if(corporateDomain && identity.hostedDomain===corporateDomain &&
+    email.endsWith('@'+corporateDomain)) return true;
+  return email.endsWith('@gmail.com') &&
+    (identity.hostedDomain===null || identity.hostedDomain===undefined) &&
+    linked.role==='Solicitante';
 }
