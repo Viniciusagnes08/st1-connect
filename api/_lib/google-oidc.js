@@ -9,7 +9,7 @@ function authError(message = 'Não foi possível validar o acesso Google.') {
 function validEmail(email) {
   return typeof email === 'string' &&
     email.length <= 180 &&
-    /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 function parseJsonBase64(segment) {
   if (typeof segment !== 'string' || !/^[A-Za-z0-9_-]+$/.test(segment))
@@ -34,7 +34,7 @@ async function getKeys(fetcher, nowSec) {
   );
   if (!keys.length) throw authError();
   if (fetcher === fetch) {
-    const match = /max-age=(\\d+)/.exec(response.headers.get('cache-control') || '');
+    const match = /max-age=(\d+)/.exec(response.headers.get('cache-control') || '');
     const seconds = Math.min(3600, Math.max(60, Number(match?.[1]) || 300));
     keyCache = { keys, expiresAt: nowSec + seconds };
   }
@@ -46,7 +46,7 @@ async function getKeys(fetcher, nowSec) {
  * Nunca confiar em nome, e-mail ou papel fornecidos diretamente pelo cliente.
  */
 export async function verifyGoogleCredential(idToken, clientId, fetcher = fetch, nowSec = Math.floor(Date.now()/1000)) {
-  if (typeof clientId !== 'string' || !/^\\d+-[\\w-]+\\.apps\\.googleusercontent\\.com$/.test(clientId))
+  if (typeof clientId !== 'string' || !/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(clientId))
     throw Object.assign(new Error('Login com Google ainda não configurado.'),{status:503});
   if (typeof idToken !== 'string' || idToken.length > 8192)
     throw authError();
