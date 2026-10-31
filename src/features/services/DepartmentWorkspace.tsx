@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import type {Account} from '../../AuthGate';
-import {fetchMyDepartments,fetchDepartmentMembers,setDepartmentMember,fetchDepartmentQueue,fetchServiceDetail,changeServiceState,assignDepartmentRequest} from './service-api';
+import {fetchMyDepartments,fetchDepartmentMembers,setDepartmentMember,fetchDepartmentQueue,fetchServiceDetail,changeServiceState,assignDepartmentRequest,fetchDepartmentAssignees} from './service-api';
 import type {DepartmentMembership,DepartmentMember,ServiceRequest,ServiceDetail,ServiceState} from './service-api';
 import './service-workspace.css';
 
@@ -31,7 +31,16 @@ export default function DepartmentWorkspace({user}:{user:Account}){
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível consultar os acessos.');}
  };
  useEffect(()=>{void reload();},[]);
- useEffect(()=>{if(!area)return;setList([]);setDetail(null);fetchDepartmentQueue(area).then(setList).catch(e=>setError(e.message));},[area]);
+ useEffect(()=>{
+  if(!area)return;
+  setList([]);setDetail(null);
+  fetchDepartmentQueue(area).then(setList).catch(e=>setError(e.message));
+  if(user.isMaster||['gestor','supervisor'].includes(memberships.find(m=>m.area===area)?.role||'')){
+   fetchDepartmentAssignees(area).then(data=>{
+    if(!user.isMaster){setMembers(data.items);setCatalog(data.users);}
+   }).catch(e=>setError(e.message));
+  }
+ },[area,memberships,user.isMaster]);
  const selectable=user.isMaster?areas:memberships.map(x=>x.area);
  const selectArea=(value:string)=>{setArea(value);setDetail(null);setError('');};
  const open=async(id:string)=>{setBusy(true);try{setDetail(await fetchServiceDetail(id));setReason('');setNext('Em triagem');}catch(e){setError(e instanceof Error?e.message:'Falha ao abrir chamado.');}finally{setBusy(false);}};
