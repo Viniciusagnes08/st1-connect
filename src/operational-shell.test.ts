@@ -34,7 +34,7 @@ test('resumo pessoal nao e anunciado como volume corporativo e erro nunca vira K
 });
 
 test('todos os caminhos antigos retornam ao portal sem executar modulos de demonstracao', () => {
-  assert.match(operational, /new Set<Page>\(\['overview', 'requests', 'bi', 'areas', 'legacy'\]\)/);
+  assert.match(operational, /new Set<Page>\(\['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'legacy'\]\)/);
   assert.match(operational, /return ROUTES\.has\(requested\) \? requested : 'overview'/);
   assert.match(operational, /window\.history\.replaceState/);
   assert.doesNotMatch(operational, /(['"])tickets\1\s*:\s*\{/);
@@ -47,8 +47,8 @@ test('novas areas sao placeholders inequivocos, sem abrir chamado para BI', () =
   assert.match(operational, /Infraestrutura e TI/);
   assert.match(operational, /Marketing e Comunicação/);
   assert.match(operational, /Financeiro e Administrativo/);
-  assert.match(operational, /Nenhuma solicitação fora do BI é enviada automaticamente/);
-  assert.match(operational, /Abertura ainda não habilitada/);
+  assert.match(operational, /O formulário geral já recebe pedidos reais para triagem/);
+  assert.match(operational, /Atendimento especializado ainda não habilitado/);
 });
 
 test('exportacao do acervo antigo nao altera dados locais nem toca em contas', () => {
