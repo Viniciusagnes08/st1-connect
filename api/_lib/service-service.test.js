@@ -49,5 +49,8 @@ test('alterar estado exige Master e transição válida com justificativa',async
   assert.deepEqual(validateServiceTransition('Novo','Em triagem',''),{state:'Em triagem',reason:''});
   assert.throws(()=>validateServiceTransition('Novo','Fechado',''));
   assert.throws(()=>validateServiceTransition('Em atendimento','Resolvido','curto'));
-  await assert.rejects(()=>changeServiceRequest({},stranger,'11111111-1111-4111-8111-111111111111','Em triagem'),e=>e.status===403);
+  const db={query:async(sql)=>sql.includes('FOR UPDATE')
+    ? {rowCount:1,rows:[{state:'Novo',area:'crm',confidential:false,requester_user_id:owner.id,assigned_to_user_id:null}]}
+    : {rowCount:0,rows:[]}};
+  await assert.rejects(()=>changeServiceRequest(db,stranger,'11111111-1111-4111-8111-111111111111','Em triagem'),e=>e.status===403);
 });
