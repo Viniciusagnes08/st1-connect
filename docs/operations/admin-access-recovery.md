@@ -74,3 +74,5 @@ Não há senha real nem segredo real nos testes.
 ## Recuperação por e-mail de uso único
 
 A branch de teste suporta `recover-admin-link`: requer `ST1_EMAIL_RECOVERY_HASH` (SHA-256 do token, sem guardar o token) e `ST1_EMAIL_RECOVERY_EXPIRES_AT` (epoch em milissegundos), ambos apenas no ambiente Preview. A rota confere o e-mail inicial cadastrado e revoga sessões após redefinição. O link deve ser entregue somente ao e-mail inicial, nunca colocado em repositório ou chat. Desativar as variáveis após a conclusão. A alteração de documentação dispara uma nova compilação da prévia para refletir as variáveis.
+
+Recompilação do ambiente Preview para validar a entrega do link de recuperação de senha do administrador inicial.
