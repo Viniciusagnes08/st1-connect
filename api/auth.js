@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { decodeSession } from './_lib/auth-session.js';
+import { isMasterAdmin } from './_lib/master-admin.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
@@ -45,7 +46,7 @@ const check = (password, stored) => {
   const got = scryptSync(password, salt, 64);
   return equal(got.toString('hex'), digest);
 };
-const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active });
+const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active, isMaster: isMasterAdmin(user) });
 const error = (res, status, message) => res.status(status).json({ error: message });
 const noCache = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); };
 const apiHeaders = () => ({
