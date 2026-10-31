@@ -5,7 +5,7 @@ import OperationalApp from './OperationalApp';
 import './auth.css';
 
 export type Role = 'Administrador' | 'Supervisor' | 'Técnico' | 'Solicitante';
-export type Account = { id: string; name: string; email: string; role: Role; active: boolean };
+export type Account = { id: string; name: string; email: string; role: Role; active: boolean; isMaster?: boolean };
 const roles: Role[] = ['Administrador', 'Supervisor', 'Técnico', 'Solicitante'];
 const roleHelp: Record<Role,string> = {
   Administrador: 'Acesso integral, configurações e gerenciamento de contas.',
@@ -166,7 +166,7 @@ export function ProfilePanel({ user, onLogout, onClose }: { user: Account; onLog
   };
   return <div className="auth-modal-layer" role="presentation" onMouseDown={e => {if(e.target===e.currentTarget)onClose();}}>
     <section className="auth-management" role="dialog" aria-modal="true" aria-label="Meu acesso">
-      <header className="auth-management-header"><div><span>ST1 CONNECT</span><h2>Meu acesso</h2><p>{user.name} · {user.role}</p></div><button onClick={onClose} aria-label="Fechar"><X size={20}/></button></header>
+      <header className="auth-management-header"><div><span>ST1 CONNECT</span><h2>Meu acesso</h2><p>{user.name} · {user.isMaster ? 'Admin Master' : user.role}</p></div><button onClick={onClose} aria-label="Fechar"><X size={20}/></button></header>
       <div className="auth-management-tabs"><button className={tab==='profile'?'selected':''} onClick={()=>setTab('profile')}><UserRound size={16}/> Minha conta</button>{user.role==='Administrador' && <button className={tab==='users'?'selected':''} onClick={()=>setTab('users')}><Users size={16}/> Usuários e permissões</button>}</div>
       <div className="auth-management-body">
         {error && <p className="auth-inline-error" role="alert">{error}</p>}{notice && <p className="auth-inline-ok" role="status">{notice}</p>}
