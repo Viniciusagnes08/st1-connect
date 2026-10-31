@@ -1,11 +1,15 @@
 import {useEffect,useState} from 'react';
 import type {Account} from '../../AuthGate';
-import {fetchMyDepartments,fetchDepartmentMembers,setDepartmentMember,fetchDepartmentQueue,fetchServiceDetail,changeServiceState,assignDepartmentRequest,fetchDepartmentAssignees} from './service-api';
-import type {DepartmentMembership,DepartmentMember,ServiceRequest,ServiceDetail,ServiceState} from './service-api';
+import {fetchMyDepartments,fetchDepartmentMembers,setDepartmentMember,fetchDepartmentQueue,fetchServiceDetail,changeServiceState,assignDepartmentRequest,fetchDepartmentAssignees,fetchDepartmentAudit} from './service-api';
+import type {DepartmentMembership,DepartmentMember,ServiceRequest,ServiceDetail,ServiceState,DepartmentAccessAudit} from './service-api';
 import './service-workspace.css';
 
 const labels:Record<string,string>={comercial:'Comercial',crm:'Sistemas e CRM',ti:'Infraestrutura e TI',marketing:'Marketing',financeiro:'Financeiro',administrativo:'Administrativo'};
 const states:ServiceState[]=['Novo','Em triagem','Em atendimento','Pendente','Resolvido','Fechado'];
+const eventLabels:Record<DepartmentAccessAudit['event_type'],string>={
+ granted:'Acesso concedido',role_changed:'Função alterada',
+ revoked:'Acesso revogado',reactivated:'Acesso reativado',
+};
 export default function DepartmentWorkspace({user}:{user:Account}){
  const [memberships,setMemberships]=useState<DepartmentMembership[]>([]);
  const [areas,setAreas]=useState<string[]>([]);
@@ -14,6 +18,7 @@ export default function DepartmentWorkspace({user}:{user:Account}){
  const [detail,setDetail]=useState<ServiceDetail|null>(null);
  const [catalog,setCatalog]=useState<DepartmentMember[]>([]);
  const [members,setMembers]=useState<DepartmentMembership[]>([]);
+ const [audit,setAudit]=useState<DepartmentAccessAudit[]>([]);
  const [chosen,setChosen]=useState('');
  const [role,setRole]=useState<DepartmentMembership['role']>('executor');
  const [active,setActive]=useState(true);
@@ -27,7 +32,7 @@ export default function DepartmentWorkspace({user}:{user:Account}){
   try{
    const mine=await fetchMyDepartments();
    setMemberships(mine.items);setAreas(mine.areas);
-   if(user.isMaster){const team=await fetchDepartmentMembers();setMembers(team.items);setCatalog(team.users);}
+   if(user.isMaster){const [team,history]=await Promise.all([fetchDepartmentMembers(),fetchDepartmentAudit()]);setMembers(team.items);setCatalog(team.users);setAudit(history.events);}
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível consultar os acessos.');}
  };
  useEffect(()=>{void reload();},[]);
@@ -42,7 +47,7 @@ export default function DepartmentWorkspace({user}:{user:Account}){
   }
  },[area,memberships,user.isMaster]);
  const selectable=user.isMaster?areas:memberships.map(x=>x.area);
- const selectArea=(value:string)=>{setArea(value);setDetail(null);setError('');};
+ const selectArea=(value:string)=>{setArea(value);setChosen('');setDetail(null);setError('');};
  const open=async(id:string)=>{setBusy(true);try{setDetail(await fetchServiceDetail(id));setReason('');setNext('Em triagem');}catch(e){setError(e instanceof Error?e.message:'Falha ao abrir chamado.');}finally{setBusy(false);}};
  const update=async()=>{if(!detail)return;setBusy(true);try{await changeServiceState(detail.request.id,next,reason);setDetail(await fetchServiceDetail(detail.request.id));setList(await fetchDepartmentQueue(area));setMessage('Atendimento registrado.');}catch(e){setError(e instanceof Error?e.message:'Atualização negada.');}finally{setBusy(false);}};
  const grant=async()=>{if(!chosen||!area)return;setBusy(true);try{await setDepartmentMember({userId:chosen,area,role,active});await reload();setMessage('Permissão departamental atualizada.');}catch(e){setError(e instanceof Error?e.message:'Falha na atualização.');}finally{setBusy(false);}};
@@ -64,12 +69,33 @@ export default function DepartmentWorkspace({user}:{user:Account}){
   {area&&user.isMaster&&<section className="svc-panel"><h3>Permissões e responsáveis</h3>
    <p>Somente o Admin Master concede e revoga acesso por departamento.</p>
    <div className="svc-form">
-    <label>Colaborador<select value={chosen} onChange={e=>setChosen(e.target.value)}><option value="">Selecione</option>{catalog.filter(u=>u.active).map(u=><option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}</select></label>
+    <label>Colaborador<select value={chosen} onChange={e=>{
+      const selected=e.target.value;
+      setChosen(selected);
+      const existing=members.find(m=>m.area===area&&m.user_id===selected);
+      if(existing){setRole(existing.role);setActive(existing.active);}
+      else{setRole('executor');setActive(true);}
+     }}><option value="">Selecione</option>{catalog.filter(u=>u.active).map(u=><option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}</select></label>
     <label>Função<select value={role} onChange={e=>setRole(e.target.value as DepartmentMembership['role'])}><option value="gestor">Gestor</option><option value="supervisor">Supervisor</option><option value="executor">Executor</option></select></label>
     <label>Status<select value={String(active)} onChange={e=>setActive(e.target.value==='true')}><option value="true">Ativo</option><option value="false">Revogado</option></select></label>
     <button type="button" className="svc-submit" disabled={busy||!chosen} onClick={()=>void grant()}>Salvar permissão</button>
    </div>
    <div className="svc-list">{members.filter(m=>m.area===area).map(m=><div key={m.user_id} className="svc-department-member">{catalog.find(u=>u.id===m.user_id)?.name||'Conta não encontrada'} · {m.role} · {m.active?'Ativo':'Revogado'}</div>)}</div>
+  </section>}
+  {area&&user.isMaster&&<section className="svc-panel" aria-label="Histórico de permissões">
+   <h3>Histórico de acessos</h3>
+   <p>Alterações de permissões armazenadas no banco, disponíveis somente para o Admin Master.</p>
+   <div className="svc-list">
+    {audit.filter(entry=>entry.area===area).length===0?
+      <p>Nenhuma alteração registrada para esta área.</p>:
+      audit.filter(entry=>entry.area===area).slice(0,25).map((entry,i)=>
+       <div key={entry.occurred_at+':'+entry.target_user_id+':'+i} className="svc-department-member">
+        <b>{eventLabels[entry.event_type]}</b> ·
+        {' '+(catalog.find(u=>u.id===entry.target_user_id)?.name||'Colaborador não identificado')} ·
+        {' '+entry.next_role} ·
+        {' '+new Date(entry.occurred_at).toLocaleString('pt-BR')}
+       </div>)}
+   </div>
   </section>}
   {detail&&<section className="svc-panel" aria-label="Detalhe do atendimento"><h3>{detail.request.protocol} — {detail.request.title}</h3><p>{detail.request.description}</p><p>Status: {detail.request.state}</p>
    {canAssign&&<label>Responsável<select value={detail.request.assigned_to_user_id||''} onChange={e=>{if(e.target.value)void assign(detail.request.id,e.target.value);}}><option value="">Não atribuído</option>{assigned.map(m=><option key={m.user_id} value={m.user_id}>{catalog.find(u=>u.id===m.user_id)?.name||m.user_id}</option>)}</select></label>}
