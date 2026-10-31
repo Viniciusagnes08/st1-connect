@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseServiceInput, validateServiceTransition } from './service-catalog.js';
+import {allowedDepartment,canSeeDepartmentRequest,canManageDepartment,canAssignDepartment} from './department-access.js';
 
 const failure=(message,status=400)=>Object.assign(new Error(message),{status});
 const uuid=value=>{
@@ -7,8 +8,12 @@ const uuid=value=>{
     throw failure('Solicitação não encontrada.',404);
   return value;
 };
-const canRead=(principal,request)=>Boolean(principal&&request&&
-  (principal.isMaster===true || request.requester_user_id===principal.id));
+async function departmentMembership(db,principal,area){
+ if(!principal||!allowedDepartment(area))return null;
+ const result=await db.query('SELECT user_id,area,department_role,active FROM st1_services.department_memberships WHERE user_id=$1 AND area=$2 AND active=true',[principal.id,area]);
+ return result.rows[0]||null;
+}
+const canRead=(principal,request,membership)=>canSeeDepartmentRequest(principal,request,membership);
 const master=principal=>{
   if(principal?.isMaster!==true || principal?.role!=='Administrador')
     throw failure('Apenas o Admin Master pode realizar esta operação.',403);
@@ -63,12 +68,17 @@ export async function createServiceRequest(db,principal,input,key) {
 export async function listServiceRequests(db,principal,view='mine') {
   const isAll=view==='all';
   if(isAll)master(principal);
-  if(view!=='mine'&&!isAll)throw failure('Visualização não permitida.');
+  const department=view.startsWith('department:')?view.slice('department:'.length):null;
+  if(department&&!allowedDepartment(department))throw failure('Área inexistente.',400);
+  if(view!=='mine'&&!isAll&&!department)throw failure('Visualização não permitida.');
+  const membership=department?await departmentMembership(db,principal,department):null;
+  if(department&&!principal.isMaster&&!membership)throw failure('Sem acesso à fila da área.',403);
   const query=`SELECT id,protocol,area,category,title,state,confidential,created_at,updated_at,
       requester_email,requester_user_id
-      FROM st1_services.requests ${isAll?'':'WHERE requester_user_id=$1'}
+      FROM st1_services.requests ${isAll?'':department?(principal.isMaster?'WHERE area=$1 AND confidential=false':'WHERE area=$1 AND confidential=false AND ($2 IN (\'gestor\',\'supervisor\') OR assigned_to_user_id=$3)'):'WHERE requester_user_id=$1'}
       ORDER BY created_at DESC,id DESC LIMIT 100`;
-  const rows=await db.query(query,isAll?[]:[principal.id]);
+  const params=isAll?[]:department?(principal.isMaster?[department]:[department,membership.department_role,principal.id]):[principal.id];
+  const rows=await db.query(query,params);
   return rows.rows;
 }
 
@@ -79,19 +89,21 @@ export async function getServiceRequest(db,principal,id) {
       created_at,updated_at,requester_email,requester_user_id,assigned_to_user_id
       FROM st1_services.requests WHERE id=$1`,[key]);
   const record=rows.rows[0];
-  if(!canRead(principal,record))throw failure('Solicitação não encontrada.',404);
+  if(!canRead(principal,record,await departmentMembership(db,principal,record?.area)))throw failure('Solicitação não encontrada.',404);
   const events=await db.query(
     `SELECT event_type,created_at,actor_user_id,payload
       FROM st1_services.request_events WHERE request_id=$1 ORDER BY created_at,id LIMIT 200`,[key]);
   return {request:record,events:events.rows};
 }
 export async function changeServiceRequest(db,principal,id,state,reason='') {
-  master(principal);
   const key=uuid(id);
   const current=await db.query(
-    'SELECT state FROM st1_services.requests WHERE id=$1 FOR UPDATE',[key]);
+    'SELECT state,area,confidential,requester_user_id,assigned_to_user_id FROM st1_services.requests WHERE id=$1 FOR UPDATE',[key]);
   if(!current.rowCount)throw failure('Solicitação não encontrada.',404);
-  const next=validateServiceTransition(current.rows[0].state,state,reason);
+  const record=current.rows[0];
+  if(!canManageDepartment(principal,record,await departmentMembership(db,principal,record.area)))
+    throw failure('Acesso ao atendimento negado.',403);
+  const next=validateServiceTransition(record.state,state,reason);
   const changed=await db.query(
     `UPDATE st1_services.requests SET state=$2,updated_at=now()
       WHERE id=$1 RETURNING id,protocol,area,state,updated_at`,[key,next.state]);
@@ -103,4 +115,20 @@ export async function changeServiceRequest(db,principal,id,state,reason='') {
     ]
   );
   return changed.rows[0];
+}
+
+export async function assignDepartmentRequest(db,principal,id,userId){
+ const key=uuid(id);
+ if(typeof userId!=='string'||userId.length>128)throw failure('Responsável inválido.');
+ const current=await db.query('SELECT id,area,confidential,assigned_to_user_id FROM st1_services.requests WHERE id=$1 FOR UPDATE',[key]);
+ if(!current.rowCount)throw failure('Solicitação não encontrada.',404);
+ const request=current.rows[0];
+ const membership=await departmentMembership(db,principal,request.area);
+ if(!canAssignDepartment(principal,request,membership))throw failure('Atribuição não autorizada.',403);
+ const target=await db.query('SELECT user_id FROM st1_services.department_memberships WHERE user_id=$1 AND area=$2 AND active=true',[userId,request.area]);
+ if(!target.rowCount)throw failure('Responsável não possui acesso ativo à área.',400);
+ const changed=await db.query('UPDATE st1_services.requests SET assigned_to_user_id=$2,updated_at=now() WHERE id=$1 RETURNING id,protocol,area,state,assigned_to_user_id,updated_at',[key,userId]);
+ await db.query(`INSERT INTO st1_services.request_events(request_id,actor_user_id,event_type,payload)
+ VALUES($1,$2,'note_added',$3::jsonb)`,[key,principal.id,JSON.stringify({action:'assigned',assigned_to_user_id:userId,previous_assignee_user_id:request.assigned_to_user_id})]);
+ return changed.rows[0];
 }
