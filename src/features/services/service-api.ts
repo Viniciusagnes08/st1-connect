@@ -47,3 +47,5 @@ export const setDepartmentMember=(input:{userId:string;area:string;role:Departme
  request<{membership:DepartmentMembership}>('/api/service-requests?action=department-member',{method:'POST',body:JSON.stringify(input)});
 export const fetchDepartmentQueue=(area:string)=>fetchServiceRequests(('department:'+area) as 'mine');
 export const assignDepartmentRequest=(id:string,assignedTo:string)=>request<{request:ServiceRequest}>('/api/service-requests',{method:'PATCH',body:JSON.stringify({action:'assign',id,assignedTo})});
+
+export const fetchDepartmentAssignees=(area:string)=>request<{items:DepartmentMembership[];users:DepartmentMember[]}>('/api/service-requests?action=assignees&area='+encodeURIComponent(area));
