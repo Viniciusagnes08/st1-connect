@@ -52,6 +52,14 @@ Referências Google:
 - `api/auth-google.test.js`: casos legados migrados para desafio assinado.
 - `npm test` e `npm run build` devem passar na CI da branch.
 
+## Bloqueio de deployment Vercel (31/10/2026)
+
+Após os testes de código (119 aprovados), uma tentativa de publicar a branch em Preview retornou `HTTP 402 payment_required` com código `api-deployments-free-per-day` (limite de mais de 100 deployments na janela diária). O provedor informou `retryAfter=86400`.
+
+**Portanto, o Preview no endereço habitual ainda aponta para um commit anterior e não contém necessariamente o desafio Google implementado nesta etapa.** Não considerar a autenticação de ponta a ponta homologada até publicar o SHA atualizado, confirmar `READY` e testar com duas contas autorizadas.
+
+Não alterar assinatura, remover proteção SSO ou trocar alvo para produção como contorno. Após a janela de quota ou ajuste aprovado pelo proprietário, realizar novo deployment de Preview da branch e verificar o SHA.
+
 ## Gate que permanece pendente
 
 O conector de navegador disponível não permite acessar a sessão atual do Google Cloud Console. Também não há ferramenta conectada para consultar ou alterar os clientes OAuth deste projeto. **A origem não foi alterada no Google Cloud por esta execução.**
