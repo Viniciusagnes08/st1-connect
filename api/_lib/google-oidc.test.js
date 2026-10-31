@@ -53,6 +53,7 @@ test('domínios públicos e e-mails externos só entram mediante convite corpora
   const gmail={email:'worker@gmail.com',hostedDomain:null};
   assert.equal(googleIdentityAllowed(gmail,null,{}),false);
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Solicitante',googlePending:true,active:true},{}),true);
+  assert.equal(googleIdentityAllowed({...gmail,hostedDomain:'outside.com'},{email:'worker@gmail.com',role:'Solicitante',googlePending:true,active:true},{}),false);
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Administrador',googlePending:true,active:true},{}),false);
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Solicitante',googlePending:false,active:true},{}),false);
 });
