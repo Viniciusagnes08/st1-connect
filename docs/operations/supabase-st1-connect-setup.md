@@ -110,3 +110,14 @@ A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase d
 - Credenciais **não podem ser copiadas para GitHub, screenshots, chat ou campos VITE_**. Para completar manualmente: no Supabase, obtenha o host exato no Connect; no Vercel, Settings → Environment Variables → DATABASE_URL (Preview, branch BI), substitua a string usando a credencial mantida em meio seguro. Se a senha da role de aplicação não estiver disponível, configure/rotacione-a por meios privados autorizados, atualizando ambos os lados **sem divulgar senha nesta conversa**.
 - Após conectar: validar dois logins, idempotência de POST, leitura de chamados de outros usuários com 404, membership BI e rollback. Somente depois considerar PR #1 apto ao merge.
 - Fonte: https://supabase.com/docs/guides/database/connecting-to-postgres
+
+
+## Tentativa controlada de conexao via Pooler IPv4 (31/10/2026)
+
+- O Supabase continua `ACTIVE_HEALTHY`; a API Preview usava credencial privada da role `st1_connect_runtime` em URL direta IPv6.
+- O driver backend em `api/_lib/db.js` agora reescreve exclusivamente no runtime Node da branch de Preview a URL direta esperada para a forma `st1_connect_runtime.<project-ref>` com porta 6543; a senha permanece intocada na `DATABASE_URL` sensível do Vercel.
+- O host é fornecido em `ST1_DB_POOLER_HOST` da branch `feature/st1-connect-bi-foundation`, inicialmente com um **candidato não verificado** (`aws-1-sa-east-1.pooler.supabase.com`). Não presumir que o índice da região seja sempre o correto.
+- Há testes unitários de validação de host, nome do banco, role e impedimento de reescrita em Production. A opção `prepare:false` e pool de 1 conexão permanecem ativas.
+- **Gate:** verificar que uma implantação feita após definir a variável retorna `{"service":"bi-foundation","database":"ready"}`. Em caso de erro, não liberar produção nem assumir que o host foi validado.
+- A origem canônica do host é o diálogo Connect do Supabase, em `https://supabase.com/dashboard/project/cxqoypwsqokkwcirugrg?showConnect=true`; a UI pode ter variações.
+- Referências: https://supabase.com/docs/guides/database/connecting-to-postgres e https://supabase.com/kb/troubleshooting/tenant-or-user-not-found.
