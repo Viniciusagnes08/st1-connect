@@ -110,6 +110,25 @@ function initialAdministrator() {
     invitationHash, inviteExpiresAt: new Date(Date.now() + INVITATION_MS).toISOString(),
   };
 }
+/**
+ * Transição de endereço de login do administrador inicial durante a homologação.
+ * Não cria contas nem altera permissões/senhas. A senha original da conta continua
+ * obrigatória. Apenas um alias explícito da mesma identidade corporativa é aceito.
+ */
+function resolveLoginUser(users, enteredEmail) {
+  const direct = users.find(user => user.email === enteredEmail);
+  if (direct) return direct;
+  if (process.env.VERCEL_ENV !== 'preview') return null;
+  const alias = String(process.env.ST1_BOOTSTRAP_LOGIN_ALIAS || '').trim().toLowerCase();
+  const primary = String(process.env.ST1_BOOTSTRAP_EMAIL || '').trim().toLowerCase();
+  if (!validEmail(alias) || !validEmail(primary) || alias === primary || enteredEmail !== alias) return null;
+  const [aliasLocal, aliasDomain] = alias.split('@');
+  const [primaryLocal, primaryDomain] = primary.split('@');
+  // Exclusivamente a pontuação local pode variar: nenhuma outra identidade.
+  if (aliasDomain !== primaryDomain || aliasLocal.replace(/\./g, '') !== primaryLocal.replace(/\./g, '')) return null;
+  return users.find(user => user.email === primary && user.role === 'Administrador' && user.active === true) || null;
+}
+
 function makeUser(name, email, password, role) {
   return { id: randomBytes(12).toString('hex'), name: name.trim(), email: email.trim().toLowerCase(), passwordHash: hash(password), role, active: true, version: 1, attempts: 0, blockedUntil: 0, createdAt: new Date().toISOString() };
 }
@@ -231,7 +250,7 @@ export default async function handler(req, res) {
     }
     if (action === 'login' && req.method === 'POST') {
       const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
-      const user = state.users.find(u => u.email === email);
+      const user = resolveLoginUser(state.users, email);
       if (!user || !user.active || !user.passwordHash) return error(res, 401, 'E-mail ou senha incorretos.');
       if (user.blockedUntil > Date.now()) return error(res, 429, 'Muitas tentativas. Aguarde alguns minutos.');
       if (!check(String(b.password || ''), user.passwordHash)) {
