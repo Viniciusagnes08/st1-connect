@@ -98,7 +98,8 @@ export function googleIdentityAllowed(identity, invited, env = process.env) {
   if (corporateDomain && identity.hostedDomain === corporateDomain && email.endsWith(suffix))
     return true;
   return Boolean(invited && invited.role === 'Solicitante' && invited.googlePending === true &&
-    invited.email === email && invited.active === true && email.endsWith('@gmail.com'));
+    invited.email === email && invited.active === true && email.endsWith('@gmail.com') &&
+    (identity.hostedDomain === null || identity.hostedDomain === undefined));
 }
 
 /**
