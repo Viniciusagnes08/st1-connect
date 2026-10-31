@@ -17,6 +17,18 @@ function adminRecoveryEnabled() {
     typeof process.env.ST1_BOOTSTRAP_EMAIL === 'string' &&
     process.env.ST1_BOOTSTRAP_EMAIL.includes('@');
 }
+
+// Acesso emergencial via link enviado apenas ao e-mail do administrador inicial.
+// O backend guarda somente o hash do token; o token nunca fica em logs ou no banco.
+function emailRecoveryEnabled() {
+  const expectedHash = String(process.env.ST1_EMAIL_RECOVERY_HASH || '');
+  const expiresAt = Number(process.env.ST1_EMAIL_RECOVERY_EXPIRES_AT);
+  return process.env.VERCEL_ENV === 'preview' &&
+    /^[a-f0-9]{64}$/i.test(expectedHash) &&
+    Number.isSafeInteger(expiresAt) &&
+    expiresAt > Date.now() &&
+    expiresAt - Date.now() <= 2 * 60 * 60 * 1000;
+}
 const originHost = () => `${storeId()}.private.blob.vercel-storage.com`;
 const sign = value => createHmac('sha256', secret()).update(value).digest('base64url');
 const equal = (a, b) => {
@@ -159,6 +171,36 @@ export default async function handler(req, res) {
       await save(state.users, state.etag);
       setSession(res, invitedUser);
       return res.json({ user: identity(invitedUser) });
+    }
+    if (action === 'recover-admin-link' && req.method === 'POST') {
+      // Em nenhuma hipótese habilitar fora da Preview ou através do Supabase público.
+      if (!emailRecoveryEnabled())
+        return error(res, 403, 'O link de recuperação expirou ou não está mais disponível.');
+      const code = typeof b.recoveryToken === 'string' ? b.recoveryToken : '';
+      if (!/^[a-f0-9]{64}$/i.test(code))
+        return error(res, 403, 'O link de recuperação é inválido ou expirou.');
+      const providedHash = createHash('sha256').update(code).digest('hex');
+      const expectedHash = String(process.env.ST1_EMAIL_RECOVERY_HASH);
+      if (!equal(providedHash, expectedHash))
+        return error(res, 403, 'O link de recuperação é inválido ou expirou.');
+      const initialEmail = String(process.env.ST1_BOOTSTRAP_EMAIL || '').trim().toLowerCase();
+      const admin = state.users.find(u =>
+        u.email === initialEmail && u.role === 'Administrador' && u.active === true);
+      // Marcador persistente e bloqueio por ETag evitam reutilização em funções concorrentes.
+      if (!admin || admin.lastEmailRecoveryHash === expectedHash)
+        return error(res, 403, 'O link de recuperação é inválido ou já foi usado.');
+      if (!validPassword(b.password))
+        return error(res, 400, 'Use uma senha entre 12 e 128 caracteres, com letras e números.');
+      admin.passwordHash = hash(b.password);
+      admin.version += 1;
+      admin.attempts = 0;
+      admin.blockedUntil = 0;
+      admin.lastEmailRecoveryHash = expectedHash;
+      delete admin.invitationHash;
+      delete admin.inviteExpiresAt;
+      await save(state.users, state.etag);
+      setSession(res, admin);
+      return res.json({ user: identity(admin) });
     }
     if (action === 'recover-admin' && req.method === 'POST') {
       if (!adminRecoveryEnabled()) return error(res, 404, 'Recuperação indisponível neste ambiente.');
