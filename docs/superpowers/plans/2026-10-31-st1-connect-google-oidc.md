@@ -13,26 +13,26 @@
 - [ ] Verify Google Cloud OAuth app type **Web application**, exact authorized origin and consent/audience state via authenticated Google Cloud console. Current connector cannot access that console.
 
 ## Task 2 — Challenge and token validation
-- [ ] Create `api/_lib/google-challenge.js` with short-lived signed nonce stored in `HttpOnly;Secure;SameSite=Strict` cookie.
-- [ ] Test valid challenge, tamper, expiry, missing cookie, incorrect secret.
-- [ ] Add `GET /api/auth?action=google-challenge` and verify challenge `nonce` signed into the Google JWT during `POST /api/auth?action=google`.
-- [ ] Clear challenge cookie after successful login; preserve password-session behavior.
+- [x] Create `api/_lib/google-challenge.js` with short-lived signed nonce stored in `HttpOnly;Secure;SameSite=Strict` cookie.
+- [x] Test valid challenge, tamper, expiry, missing cookie, incorrect secret.
+- [x] Add `GET /api/auth?action=google-challenge` and verify challenge `nonce` signed into the Google JWT during `POST /api/auth?action=google`.
+- [x] Clear challenge cookie after successful login; preserve password-session behavior.
 
 ## Task 3 — Server-side identity policy
-- [ ] Corporate accounts must have matching Google-signed `hd` plus `@st1.net.br`, verified email and Google `sub`.
-- [ ] Invited Gmail may activate only when there is a Master-approved pending invitation; returning Gmail remains `Solicitante`.
-- [ ] Previously password-authenticated accounts and the Admin Master are never linked automatically.
-- [ ] Revalidate policy on returning Google login; deactivated users remain blocked.
-- [ ] Add signed JWT regression tests (wrong `aud`, `iss`, `hd`, `nonce`, exp, false `email_verified`, tampered signature).
+- [x] Corporate accounts must have matching Google-signed `hd` plus `@st1.net.br`, verified email and Google `sub`.
+- [x] Invited Gmail may activate only when there is a Master-approved pending invitation; returning Gmail remains `Solicitante`.
+- [x] Previously password-authenticated accounts and the Admin Master are never linked automatically.
+- [x] Revalidate policy on returning Google login; deactivated users remain blocked.
+- [x] Add signed JWT regression tests (wrong `aud`, `iss`, `hd`, `nonce`, exp, false `email_verified`, tampered signature).
 
 ## Task 4 — Frontend GIS
-- [ ] Request login challenge before initializing the GIS button and pass the returned nonce to GIS.
-- [ ] Preserve existing login UI and password fallback.
-- [ ] Show actionable errors for failed challenge/Google script load and avoid misleading success.
+- [x] Request login challenge before initializing the GIS button and pass the returned nonce to GIS.
+- [x] Preserve existing login UI and password fallback.
+- [x] Show actionable errors for failed challenge/Google script load and avoid misleading success.
 
 ## Task 5 — Verification and release gate
-- [ ] `npm test`, TypeScript and Vite pass; three GitHub Actions suites green.
-- [ ] Preview deployment READY, `main` untouched.
+- [x] `npm test`, TypeScript and Vite pass; three GitHub Actions suites green.
+- [x] Preview deployment READY, `main` untouched.
 - [ ] Manual E2E in authorized browser after Google Cloud origin registration: corporate, invited Gmail, noninvited Gmail, deactivated account, logout and Master protection.
 - [ ] Retain Preview SSO; no general production release without Google Cloud and real-account E2E confirmation.
 
@@ -45,6 +45,14 @@ https://st1-connect-git-feature-st1-connect-bi-fo-ebfb78-vinicius-agnes.vercel.a
 ```
 
 Do not append `/?utm_source=...`, `#/overview`, `/api/auth`, or a trailing path. Match the exact Client ID configured in `ST1_GOOGLE_CLIENT_ID`. If personal Gmail invitations must work, use an OAuth audience compatible with external test users or public external sign-in; an Internal-only audience would exclude personal Gmail accounts.
+
+## QA execution evidence
+
+- Full CI with nonce handshake and existing Google contracts: **119 tests passing, 0 failed** at commit `1c53686cc9372429dfa99adf6d2f181c3b4c5494`. All three GitHub workflows passed.
+- Additional Gmail-hosted-domain validation included in later commits; recheck corresponding CI after the final documentation commit.
+- Vercel Preview config: `ST1_GOOGLE_CLIENT_ID` is present and well-formed; SSO protection remains enabled.
+- Required Google Cloud origin still **unverified/unconfigured by connector**, so real login remains pending.
+- Detailed runbook: `docs/operations/st1-connect-google-oidc-runbook-20261031.md`.
 
 ## Rollback
 
