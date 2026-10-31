@@ -170,7 +170,7 @@ export default async function handler(req, res) {
     if (action === 'status' && req.method === 'GET') return res.json({
       configured:state.users.length > 0,user:me ? identity(me) : null,
       adminRecoveryAvailable:adminRecoveryEnabled(),
-      googleClientId:/^\\d+-[\\w-]+\\.apps\\.googleusercontent\\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||''))
+      googleClientId:/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||''))
         ? process.env.ST1_GOOGLE_CLIENT_ID : null,
     });
     if (action === 'setup' && req.method === 'POST') {
