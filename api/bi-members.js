@@ -1,6 +1,7 @@
 import { currentPrincipal, loadDirectory, publicDirectory } from './_lib/identity.js';
 import { connection, inTransaction } from './_lib/db.js';
 import { findMembership } from './_lib/bi-membership.js';
+import { canUpdateBiMembership } from './_lib/master-admin.js';
 import { assertBiEnabled, validWriteOrigin, validateJsonBody, sendError } from './_lib/http.js';
 
 export default async function handler(req, res) {
@@ -43,6 +44,8 @@ export default async function handler(req, res) {
       const account=(await loadDirectory()).find(p=>p.id===body.userId);
       if(!account || (body.active && !account.active))
         return res.status(404).json({error:'Conta ativa não encontrada.'});
+      if (!canUpdateBiMembership(user,account))
+        return res.status(403).json({error:'O acesso BI da conta Master só pode ser alterado pelo próprio Admin Master.'});
       if(body.active && !['Administrador','Supervisor','Técnico'].includes(account.role))
         return res.status(400).json({error:'Altere o perfil para Técnico, Supervisor ou Administrador antes de autorizar no BI.'});
       const result=await inTransaction(async tx=>{
