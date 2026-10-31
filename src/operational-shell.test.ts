@@ -34,7 +34,8 @@ test('resumo pessoal nao e anunciado como volume corporativo e erro nunca vira K
 });
 
 test('todos os caminhos antigos retornam ao portal sem executar modulos de demonstracao', () => {
-  assert.match(operational, /new Set<Page>\(\['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'legacy'\]\)/);
+  assert.match(operational, /new Set<Page>\(\['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'departments', 'legacy'\]\)/);
+  assert.match(operational, /page === 'departments' && <DepartmentWorkspace user=\{user\}\/>/);
   assert.match(operational, /return ROUTES\.has\(requested\) \? requested : 'overview'/);
   assert.match(operational, /window\.history\.replaceState/);
   assert.doesNotMatch(operational, /(['"])tickets\1\s*:\s*\{/);
