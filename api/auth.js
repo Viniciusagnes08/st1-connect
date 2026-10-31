@@ -1,7 +1,8 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { decodeSession } from './_lib/auth-session.js';
 import { isMasterAdmin, canCreateAccount, canUpdateAccount } from './_lib/master-admin.js';
-import { verifyGoogleCredential, googleIdentityAllowed } from './_lib/google-oidc.js';
+import { verifyGoogleCredential, googleIdentityAllowed, googleReturningIdentityAllowed } from './_lib/google-oidc.js';
+import { createGoogleChallenge, readGoogleChallenge, clearGoogleChallengeCookie } from './_lib/google-challenge.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
@@ -96,11 +97,12 @@ async function save(users, etag, auditTrail) {
     throw new Error(`Não foi possível salvar os usuários (${response.status}).`);
   }
 }
-function setSession(res, user) {
+function setSession(res, user, {clearGoogleNonce = false} = {}) {
   const expires = Math.floor(Date.now() / 1000) + 8 * 3600;
   const payload = Buffer.from(JSON.stringify({ uid: user.id, ver: user.version, exp: expires })).toString('base64url');
   const session = `${payload}.${sign(payload)}`;
-  res.setHeader('Set-Cookie', `${COOKIE}=${session}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${8 * 3600}`);
+  const sessionCookie=`${COOKIE}=${session}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${8 * 3600}`;
+  res.setHeader('Set-Cookie',clearGoogleNonce ? [clearGoogleChallengeCookie(),sessionCookie] : sessionCookie);
 }
 function removeSession(res) { res.setHeader('Set-Cookie', `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`); }
 function current(req, users) { return decodeSession(req.headers.cookie, secret(), users); }
@@ -183,6 +185,13 @@ export default async function handler(req, res) {
       googleClientId:/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||''))
         ? process.env.ST1_GOOGLE_CLIENT_ID : null,
     });
+    if (action === 'google-challenge' && req.method === 'GET') {
+      if (!/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||'')))
+        return error(res,503,'Login Google ainda não configurado.');
+      const challenge=createGoogleChallenge(secret());
+      res.setHeader('Set-Cookie',challenge.cookie);
+      return res.json({nonce:challenge.nonce,expiresIn:600});
+    }
     if (action === 'setup' && req.method === 'POST') {
       if (state.users.length || process.env.ST1_BOOTSTRAP_EMAIL) return error(res, 409, 'A primeira conta está reservada para ativação pelo e-mail corporativo.');
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
@@ -267,12 +276,13 @@ export default async function handler(req, res) {
     }
     if (action === 'google' && req.method === 'POST') {
       const credential=typeof b.credential === 'string' ? b.credential : '';
-      const verified=await verifyGoogleCredential(credential,process.env.ST1_GOOGLE_CLIENT_ID);
+      const challengeNonce=readGoogleChallenge(req.headers.cookie,secret());
+      const verified=await verifyGoogleCredential(credential,process.env.ST1_GOOGLE_CLIENT_ID,fetch,Math.floor(Date.now()/1000),challengeNonce);
       const subjectAccount=state.users.find(u=>u.googleSub===verified.sub && u.googleAuthOnly===true);
       if (subjectAccount) {
-        if (!subjectAccount.active || subjectAccount.email!==verified.email)
+        if (!googleReturningIdentityAllowed(verified,subjectAccount,process.env))
           return error(res,403,'Esta conta Google precisa de validação administrativa.');
-        setSession(res,subjectAccount);
+        setSession(res,subjectAccount,{clearGoogleNonce:true});
         return res.json({user:identity(subjectAccount)});
       }
       const existing=state.users.find(u=>u.email===verified.email);
@@ -289,7 +299,7 @@ export default async function handler(req, res) {
         existing.name=validName(verified.name) ? verified.name : existing.name;
         existing.version+=1;
         account=existing;
-        await save(state.users,state.etag,state.auditTrail);
+        await save(state.users,state.etag,auditEvent(state,account,'google_account_linked',account,{role:account.role}));
       } else {
         account={
           id:randomBytes(12).toString('hex'),
@@ -298,9 +308,9 @@ export default async function handler(req, res) {
           googleSub:verified.sub,googleAuthOnly:true,version:1,attempts:0,blockedUntil:0,
           createdAt:new Date().toISOString(),
         };
-        await save([...state.users,account],state.etag,state.auditTrail);
+        await save([...state.users,account],state.etag,auditEvent(state,account,'google_account_created',account,{role:account.role}));
       }
-      setSession(res,account);
+      setSession(res,account,{clearGoogleNonce:true});
       return res.status(200).json({user:identity(account)});
     }
     if (action === 'login' && req.method === 'POST') {
@@ -368,6 +378,9 @@ export default async function handler(req, res) {
         return error(res, 400, 'Não é possível remover o próprio acesso de administrador.');
       if (!canUpdateAccount(me,user,b.role,b.active))
         return error(res, 403, 'Conta administrativa protegida. Somente o Admin Master pode modificar privilégios administrativos.');
+      if (user.email?.endsWith('@gmail.com') && (user.googleAuthOnly===true || user.googlePending===true) &&
+          b.role!=='Solicitante')
+        return error(res,403,'Contas Google pessoais permanecem com perfil Solicitante.');
       if (b.password && user.id === me.id)
         return error(res, 400, 'Para alterar sua senha, use Minha conta e informe a senha atual.');
       if (b.password && user.googleAuthOnly === true)
