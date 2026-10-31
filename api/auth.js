@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { decodeSession } from './_lib/auth-session.js';
 import { isMasterAdmin } from './_lib/master-admin.js';
+import { verifyGoogleCredential, googleIdentityAllowed } from './_lib/google-oidc.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
@@ -46,7 +47,7 @@ const check = (password, stored) => {
   const got = scryptSync(password, salt, 64);
   return equal(got.toString('hex'), digest);
 };
-const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active, isMaster: isMasterAdmin(user) });
+const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active, isMaster: isMasterAdmin(user), authMethod: user.googleAuthOnly === true ? 'google' : 'password' });
 const error = (res, status, message) => res.status(status).json({ error: message });
 const noCache = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); };
 const apiHeaders = () => ({
@@ -166,7 +167,12 @@ export default async function handler(req, res) {
     }
     const me = current(req, state.users);
     const b = typeof req.body === 'object' && req.body ? req.body : {};
-    if (action === 'status' && req.method === 'GET') return res.json({ configured: state.users.length > 0, user: me ? identity(me) : null, adminRecoveryAvailable: adminRecoveryEnabled() });
+    if (action === 'status' && req.method === 'GET') return res.json({
+      configured:state.users.length > 0,user:me ? identity(me) : null,
+      adminRecoveryAvailable:adminRecoveryEnabled(),
+      googleClientId:/^\\d+-[\\w-]+\\.apps\\.googleusercontent\\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||''))
+        ? process.env.ST1_GOOGLE_CLIENT_ID : null,
+    });
     if (action === 'setup' && req.method === 'POST') {
       if (state.users.length || process.env.ST1_BOOTSTRAP_EMAIL) return error(res, 409, 'A primeira conta está reservada para ativação pelo e-mail corporativo.');
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
@@ -249,6 +255,44 @@ export default async function handler(req, res) {
       setSession(res, admin);
       return res.json({ user: identity(admin) });
     }
+    if (action === 'google' && req.method === 'POST') {
+      const credential=typeof b.credential === 'string' ? b.credential : '';
+      const verified=await verifyGoogleCredential(credential,process.env.ST1_GOOGLE_CLIENT_ID);
+      const subjectAccount=state.users.find(u=>u.googleSub===verified.sub && u.googleAuthOnly===true);
+      if (subjectAccount) {
+        if (!subjectAccount.active || subjectAccount.email!==verified.email)
+          return error(res,403,'Esta conta Google precisa de validação administrativa.');
+        setSession(res,subjectAccount);
+        return res.json({user:identity(subjectAccount)});
+      }
+      const existing=state.users.find(u=>u.email===verified.email);
+      if (!googleIdentityAllowed(verified,existing,process.env))
+        return error(res,403,'O acesso Google está restrito à equipe ST1 autorizada.');
+      if (existing && (existing.googleAuthOnly || existing.passwordHash || existing.role!=='Solicitante' || !existing.googlePending))
+        return error(res,403,'Este e-mail já tem uma conta. Solicite o vínculo ao administrador.');
+      let account;
+      if (existing) {
+        // Apenas convites pendentes de Solicitante: nunca vincular contas administrativas automaticamente.
+        existing.googleSub=verified.sub;
+        existing.googleAuthOnly=true;
+        existing.googlePending=false;
+        existing.name=validName(verified.name) ? verified.name : existing.name;
+        existing.version+=1;
+        account=existing;
+        await save(state.users,state.etag);
+      } else {
+        account={
+          id:randomBytes(12).toString('hex'),
+          name:validName(verified.name) ? verified.name : 'Colaborador ST1',
+          email:verified.email,passwordHash:'',role:'Solicitante',active:true,
+          googleSub:verified.sub,googleAuthOnly:true,version:1,attempts:0,blockedUntil:0,
+          createdAt:new Date().toISOString(),
+        };
+        await save([...state.users,account],state.etag);
+      }
+      setSession(res,account);
+      return res.status(200).json({user:identity(account)});
+    }
     if (action === 'login' && req.method === 'POST') {
       const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
       const user = resolveLoginUser(state.users, email);
@@ -277,6 +321,21 @@ export default async function handler(req, res) {
       return res.json({ user: identity(me) });
     }
     if (me.role !== 'Administrador') return error(res, 403, 'Acesso exclusivo do administrador.');
+    if (action === 'google-invite' && req.method === 'POST') {
+      if (!isMasterAdmin(me)) return error(res,403,'Somente o Admin Master pode autorizar acessos Google pessoais.');
+      const email=typeof b.email==='string' ? b.email.trim().toLowerCase() : '';
+      if (!validEmail(email) || !email.endsWith('@gmail.com'))
+        return error(res,400,'Informe um endereço Gmail válido para o convite individual.');
+      if (state.users.some(u=>u.email===email))
+        return error(res,409,'Este e-mail já possui um cadastro ou convite.');
+      const invitation={
+        id:randomBytes(12).toString('hex'),name:'Convite Google pendente',email,
+        passwordHash:'',role:'Solicitante',active:true,googlePending:true,
+        googleAuthOnly:false,version:1,attempts:0,blockedUntil:0,createdAt:new Date().toISOString(),
+      };
+      await save([...state.users,invitation],state.etag);
+      return res.status(201).json({user:identity(invitation)});
+    }
     if (action === 'users' && req.method === 'GET') return res.json({ users: state.users.map(identity) });
     if (action === 'users' && req.method === 'POST') {
       if (!validName(b.name) || !validEmail(b.email) || !validPassword(b.password) || !ROLES.includes(b.role)) return error(res, 400, 'Preencha os dados, perfil e senha com pelo menos 12 caracteres, letras e números.');
