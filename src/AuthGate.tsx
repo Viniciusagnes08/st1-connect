@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole, LogOut, Plus, ShieldCheck, UserRound, Users, Wifi, X } from 'lucide-react';
-import App from './App';
+import OperationalApp from './OperationalApp';
 import './auth.css';
 
 export type Role = 'Administrador' | 'Supervisor' | 'Técnico' | 'Solicitante';
@@ -47,7 +47,7 @@ export default function AuthGate() {
     setUser(null); window.location.hash = '/overview';
   };
   if (loading) return <div className="auth-loading"><span className="auth-spinner" />Preparando acesso seguro...</div>;
-  if (user) return <App user={user} onLogout={exit} />;
+  if (user) return <OperationalApp user={user} onLogout={exit} />;
   return <LoginScreen setup={!configured && !inviteToken && !emailRecoveryToken} inviteToken={inviteToken} emailRecoveryToken={emailRecoveryToken} recoveryAvailable={recoveryAvailable} error={error} onLogin={u => {
     if (inviteToken || emailRecoveryToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/bi');
     setInviteToken(''); setUser(u); setError('');
