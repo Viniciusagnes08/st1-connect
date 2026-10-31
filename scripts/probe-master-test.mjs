@@ -5,8 +5,8 @@ const test = spawnSync(process.execPath, [
 ], {encoding:'utf8',env:process.env});
 const report = [test.stdout||'', test.stderr||''].join('\n');
 if (test.status !== 0) {
-  const match=report.match(/master-privileges\.test\.js:(\d+):\d+/);
-  const line=match ? Number(match[1]) : 250;
+  const matches=[...report.matchAll(/master-privileges\.test\.js:(\d+):\d+/g)];
+  const line=matches.length ? Number(matches[matches.length-1][1]) : 250;
   console.error('Security regression failed. Failure line:',line);
   process.exit(Math.min(250,Math.max(1,line)));
 }
