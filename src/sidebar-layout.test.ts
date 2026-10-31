@@ -28,10 +28,13 @@ test('ST1 Connect e multi-area; BI e o primeiro modulo, nao toda a plataforma', 
   assert.match(app, /navItem\('overview', 'Visão geral'/);
   assert.match(app, /navItem\('requests', 'Minhas solicitações'/);
   assert.match(app, /navItem\('bi', 'Central de BI'/);
-  assert.match(app, /navItem\('areas', 'Próximos módulos'/);
+  assert.match(app, /navItem\('services', 'Solicitações gerais'/);
+  assert.match(app, /navItem\('ouvidoria', 'Ouvidoria'/);
+  assert.match(app, /user\.isMaster && navItem\('management', 'Gestão Master'/);
+  assert.match(app, /navItem\('areas', 'Outras áreas'/);
   assert.match(app, /navItem\('legacy', 'Dados locais anteriores'/);
   assert.match(app, /Em implantação/);
-  assert.match(app, /Abertura ainda não habilitada/);
+  assert.match(app, /Atendimento especializado ainda não habilitado/);
 });
 
 test('mobile mantem menu e perfil acessiveis com telas curtas', () => {
