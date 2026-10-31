@@ -1,6 +1,7 @@
 export const BI_STAFF_ROLES = Object.freeze(['Administrador', 'Supervisor', 'Técnico']);
 
 export function isBiStaff(user, membership) {
+  if (user?.isMaster === true && user?.role === 'Administrador') return true;
   return Boolean(user && BI_STAFF_ROLES.includes(user.role) &&
     membership && membership.active === true);
 }
@@ -14,6 +15,8 @@ export async function findMembership(db, userId) {
 }
 
 export async function requireBiStaff(db, principal) {
+  if (principal?.isMaster === true && principal?.role === 'Administrador')
+    return {user_id:principal.id,bi_role:'manager',active:true,master:true};
   const membership=await findMembership(db,principal.id);
   if (!isBiStaff(principal,membership)) {
     throw Object.assign(new Error('Acesso exclusivo de membros autorizados do Squad de BI.'),{status:403});
