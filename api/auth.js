@@ -8,6 +8,15 @@ const ROLES = ['Administrador', 'Supervisor', 'Técnico', 'Solicitante'];
 const secret = () => process.env.ST1_AUTH_SECRET;
 const token = () => process.env.BLOB_READ_WRITE_TOKEN;
 const storeId = () => process.env.ST1_BLOB_STORE_ID;
+// Somente Preview. Requer codigo administrativo guardado no Vercel.
+function adminRecoveryEnabled() {
+  return process.env.VERCEL_ENV === 'preview' &&
+    process.env.ST1_ADMIN_RECOVERY_ENABLED === 'true' &&
+    typeof process.env.ST1_SETUP_TOKEN === 'string' &&
+    process.env.ST1_SETUP_TOKEN.length >= 24 &&
+    typeof process.env.ST1_BOOTSTRAP_EMAIL === 'string' &&
+    process.env.ST1_BOOTSTRAP_EMAIL.includes('@');
+}
 const originHost = () => `${storeId()}.private.blob.vercel-storage.com`;
 const sign = value => createHmac('sha256', secret()).update(value).digest('base64url');
 const equal = (a, b) => {
@@ -125,7 +134,7 @@ export default async function handler(req, res) {
     }
     const me = current(req, state.users);
     const b = typeof req.body === 'object' && req.body ? req.body : {};
-    if (action === 'status' && req.method === 'GET') return res.json({ configured: state.users.length > 0, user: me ? identity(me) : null });
+    if (action === 'status' && req.method === 'GET') return res.json({ configured: state.users.length > 0, user: me ? identity(me) : null, adminRecoveryAvailable: adminRecoveryEnabled() });
     if (action === 'setup' && req.method === 'POST') {
       if (state.users.length || process.env.ST1_BOOTSTRAP_EMAIL) return error(res, 409, 'A primeira conta está reservada para ativação pelo e-mail corporativo.');
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
@@ -150,6 +159,33 @@ export default async function handler(req, res) {
       await save(state.users, state.etag);
       setSession(res, invitedUser);
       return res.json({ user: identity(invitedUser) });
+    }
+    if (action === 'recover-admin' && req.method === 'POST') {
+      if (!adminRecoveryEnabled()) return error(res, 404, 'Recuperação indisponível neste ambiente.');
+      const requestedEmail = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
+      const expectedEmail = String(process.env.ST1_BOOTSTRAP_EMAIL).trim().toLowerCase();
+      const submittedCode = typeof b.setupToken === 'string' ? b.setupToken : '';
+      const masterCode = process.env.ST1_SETUP_TOKEN;
+      const password = typeof b.password === 'string' ? b.password : '';
+      // Não revela se o cadastro/email existe. Só a conta de administrador
+      // inicialmente aprovisionada pode usar o codigo administrativo.
+      const admin = state.users.find(u => u.email === expectedEmail && u.email === requestedEmail &&
+        u.role === 'Administrador' && u.active === true);
+      const secretHash = createHash('sha256').update(masterCode).digest('hex');
+      if (!admin || !equal(submittedCode, masterCode) || admin.adminRecoveryUsedHash === secretHash)
+        return error(res, 403, 'Não foi possível confirmar o acesso. Verifique e solicite um novo código administrativo.');
+      if (!validPassword(password))
+        return error(res, 400, 'A senha precisa ter de 12 a 128 caracteres, com letras e números.');
+      admin.passwordHash = hash(password);
+      admin.version += 1; // Invalida todas as sessões anteriores.
+      admin.attempts = 0;
+      admin.blockedUntil = 0;
+      admin.adminRecoveryUsedHash = secretHash; // A mesma credencial só pode ser usada uma vez.
+      delete admin.invitationHash;
+      delete admin.inviteExpiresAt;
+      await save(state.users, state.etag);
+      setSession(res, admin);
+      return res.json({ user: identity(admin) });
     }
     if (action === 'login' && req.method === 'POST') {
       const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
