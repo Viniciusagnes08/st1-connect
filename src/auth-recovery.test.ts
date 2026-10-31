@@ -12,7 +12,7 @@ test('recuperação só é apresentada quando o backend confirma a disponibilida
   assert.match(ui,/forgot \? \(recoveryAvailable && !setup && !inviteToken/);
   assert.match(ui,/request\(viaEmailLink \? 'recover-admin-link' : isRecovery \? 'recover-admin'/);
   assert.match(ui,/emailRecoveryToken \? <form className="auth-form auth-recovery-form"/);
-  assert.match(ui,/window\.location\.hash\.startsWith\('#\/recover-link\?'\)/);
+  assert.match(ui,/hash\.startsWith\('#\/recover-link\?'\)/);
   assert.match(backend,/process\.env\.VERCEL_ENV === 'preview'/);
   assert.match(backend,/process\.env\.ST1_ADMIN_RECOVERY_ENABLED === 'true'/);
 });
