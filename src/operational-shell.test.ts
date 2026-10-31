@@ -47,7 +47,7 @@ test('novas areas sao placeholders inequivocos, sem abrir chamado para BI', () =
   assert.match(operational, /Infraestrutura e TI/);
   assert.match(operational, /Marketing e Comunicação/);
   assert.match(operational, /Financeiro e Administrativo/);
-  assert.match(operational, /não são enviados automaticamente/);
+  assert.match(operational, /Nenhuma solicitação fora do BI é enviada automaticamente/);
   assert.match(operational, /Abertura ainda não habilitada/);
 });
 
