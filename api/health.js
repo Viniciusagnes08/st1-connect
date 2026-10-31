@@ -1,6 +1,26 @@
 import { connection } from './_lib/db.js';
 import { assertBiEnabled } from './_lib/http.js';
 
+// Temporario: somente Preview e sob flag diagnostica. Nunca expoe mensagens,
+// segredos, SQL ou hostname; classifica em categorias de operacao.
+export function classifyDatabaseError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  if (/tenant\/user|tenant or user|tenant not found|user not found/.test(message))
+    return 'POOLER_TENANT';
+  if (code === '28P01' || /password authentication failed/.test(message))
+    return 'AUTHENTICATION';
+  if (['ENOTFOUND','EAI_AGAIN','ENETUNREACH','EHOSTUNREACH','ECONNREFUSED'].includes(code))
+    return 'NETWORK';
+  if (code === 'ETIMEDOUT' || /timeout|timed out/.test(message))
+    return 'TIMEOUT';
+  if (/ssl|certificate|tls/.test(message))
+    return 'TLS';
+  if (/ST1 Connect|Pooler invalido|pooler somente|database_url/i.test(message))
+    return 'CONFIGURATION';
+  return 'UNCLASSIFIED';
+}
+
 export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -10,8 +30,18 @@ export default async function handler(req,res) {
     const db=await connection();
     await db.query('SELECT 1');
     return res.status(200).json({service:'bi-foundation',database:'ready'});
-  } catch {
-    // Nunca expor connection string, nomes internos ou stack de erro.
+  } catch (error) {
+    const diagnostic = process.env.VERCEL_ENV==='preview' && req.query?.diagnose==='1';
+    if (diagnostic) {
+      return res.status(503).json({
+        service:'bi-foundation',
+        database:'unavailable',
+        diagnostic:{
+          connection: process.env.ST1_DB_POOLER_HOST ? 'pooler' : 'direct',
+          category: classifyDatabaseError(error),
+        },
+      });
+    }
     return res.status(503).json({service:'bi-foundation',database:'unavailable'});
   }
 }
