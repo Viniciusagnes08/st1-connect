@@ -8,13 +8,14 @@ import {
 import type { Account } from './AuthGate';
 import { ProfilePanel } from './AuthGate';
 import BIWorkspace from './features/bi/BIWorkspace';
+import ServiceWorkspace from './features/services/ServiceWorkspace';
 import { getMyRequests } from './features/bi/api';
 import type { OwnRequest } from './features/bi/types';
 import { scopeLabel } from './features/bi/bi-views';
 import { downloadLegacyBackup, readLegacyBackup } from './legacy-backup';
 import './operational.css';
 
-type Page = 'overview' | 'requests' | 'bi' | 'areas' | 'legacy';
+type Page = 'overview' | 'requests' | 'bi' | 'services' | 'ouvidoria' | 'management' | 'areas' | 'legacy';
 type LoadResult =
   | { kind: 'loading'; items: OwnRequest[] }
   | { kind: 'ready'; items: OwnRequest[] }
@@ -25,11 +26,14 @@ type LegacyState =
   | { kind: 'empty' }
   | { kind: 'error'; message: string };
 
-const ROUTES = new Set<Page>(['overview', 'requests', 'bi', 'areas', 'legacy']);
+const ROUTES = new Set<Page>(['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'legacy']);
 const PAGE_LABELS: Record<Page, string> = {
   overview: 'Visão geral',
   requests: 'Minhas solicitações',
   bi: 'Central de BI',
+  services: 'Solicitações gerais',
+  ouvidoria: 'Ouvidoria',
+  management: 'Admin Master',
   areas: 'Áreas de atendimento',
   legacy: 'Dados locais anteriores',
 };
@@ -190,7 +194,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
             <ScopePill scope={item.scope} />
           </div>
           <span className="op-request-state">{item.state ?? 'Aguardando triagem'}</span>
-          {item.scope === 'BI' && <button type="button" className="op-request-open" onClick={() => navigate('bi')} aria-label={'Abrir Central de BI para acompanhar ' + item.protocol}>
+          {<button type="button" className="op-request-open" onClick={() => navigate(item.scope==='BI'?'bi':item.scope==='OUVIDORIA'?'ouvidoria':'services')} aria-label={'Abrir a área de acompanhamento ' + item.protocol}>
             <ArrowRight size={17} />
           </button>}
         </div>
@@ -230,7 +234,10 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
         <div className="sidebar-nav-group sidebar-nav-highlight">
           <div className="nav-section-label">ÁREAS DE ATENDIMENTO</div>
           {navItem('bi', 'Central de BI', BarChart3)}
-          {navItem('areas', 'Próximos módulos', Users)}
+          {navItem('services', 'Solicitações gerais', ClipboardList)}
+          {navItem('ouvidoria', 'Ouvidoria', ShieldCheck)}
+          {user.isMaster && navItem('management', 'Gestão Master', MonitorCog)}
+          {navItem('areas', 'Outras áreas', Users)}
         </div>
         <div className="sidebar-nav-group">
           <div className="nav-section-label">CONTINUIDADE DOS DADOS</div>
@@ -269,6 +276,9 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
             <p>{page === 'overview' ? 'Uma única porta de entrada. Cada solicitação no seu destino correto.' :
                 page === 'requests' ? 'Acompanhamento dos registros reais vinculados à sua conta.' :
                 page === 'bi' ? 'Módulo de dados, relatórios, indicadores e inteligência da ST1.' :
+                page === 'services' ? 'Formulários gerais com protocolo, histórico e triagem corporativa.' :
+                page === 'ouvidoria' ? 'Canal reservado para manifestações e acompanhamento pelo solicitante.' :
+                page === 'management' ? 'Visão de triagem administrativa para a conta master autenticada.' :
                 page === 'areas' ? 'Expansão progressiva por área, com responsáveis e dados validados.' :
                 'Preservação de registros anteriores do navegador, sem importação automática.'}
             </p>
@@ -283,9 +293,9 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
         {page === 'overview' && <>
           <section className="op-hero">
             <span className="op-hero-eyebrow"><ShieldCheck size={15}/> ST1 INTERNET · PLATAFORMA MULTIÁREA</span>
-            <h2>Todas as áreas conectadas.<br/><strong>Somente dados verdadeiros.</strong></h2>
-            <p>O ST1 Connect está sendo implantado por módulos. Sua visão pessoal usa registros confirmados no banco; outras áreas entram após validação dos fluxos e responsáveis.</p>
-            <button type="button" className="op-hero-button" onClick={() => navigate('bi')}>Acessar módulo de BI <ArrowRight size={17}/></button>
+            <h2>Uma central para toda a ST1.<br/><strong>Somente dados verdadeiros.</strong></h2>
+            <p>BI, solicitações gerais e Ouvidoria compartilham uma experiência corporativa. O acompanhamento usa registros reais, enquanto o atendimento especializado por departamento depende da designação de responsáveis.</p>
+            <button type="button" className="op-hero-button" onClick={() => navigate('services')}>Abrir solicitação <ArrowRight size={17}/></button>
             <Database className="op-hero-art" size={220} strokeWidth={0.75} aria-hidden="true"/>
           </section>
 
@@ -304,8 +314,10 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
             <section className="op-surface">
               <div className="op-surface-head"><div><small>MÓDULOS</small><h3>Central de serviços</h3></div></div>
               <div className="op-modules">
-                <button type="button" className="op-module-live" onClick={() => navigate('bi')}><span className="op-module-icon"><BarChart3 size={19}/></span><span><b>Dados e Inteligência (BI)</b><small>Primeiro módulo integrado ao banco</small></span><ArrowRight size={18}/></button>
-                <div className="op-module-pending"><span className="op-module-icon"><FileClock size={19}/></span><span><b>Demais áreas</b><small>Fluxos de atendimento em implantação</small></span><span className="op-pending-tag">Pendente</span></div>
+                <button type="button" className="op-module-live" onClick={() => navigate('bi')}><span className="op-module-icon"><BarChart3 size={19}/></span><span><b>Dados e Inteligência (BI)</b><small>Fila especializada existente</small></span><ArrowRight size={18}/></button>
+                <button type="button" className="op-module-live" onClick={() => navigate('services')}><span className="op-module-icon"><ClipboardList size={19}/></span><span><b>Solicitação Geral</b><small>Recebimento com protocolo e triagem administrativa</small></span><ArrowRight size={18}/></button>
+                <button type="button" className="op-module-live" onClick={() => navigate('ouvidoria')}><span className="op-module-icon"><ShieldCheck size={19}/></span><span><b>Ouvidoria</b><small>Canal reservado com acompanhamento</small></span><ArrowRight size={18}/></button>
+                <div className="op-module-pending"><span className="op-module-icon"><FileClock size={19}/></span><span><b>Atendimento especializado</b><small>Equipes e roteamento por área ainda em implantação</small></span><span className="op-pending-tag">Pendente</span></div>
               </div>
               <button type="button" className="op-secondary-link" onClick={() => navigate('areas')}>Conhecer os próximos módulos <ArrowRight size={15}/></button>
             </section>
@@ -318,9 +330,12 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
         </section>}
 
         {page === 'bi' && <BIWorkspace user={user}/>}
+        {page === 'services' && <ServiceWorkspace user={user} mode="general"/>}
+        {page === 'ouvidoria' && <ServiceWorkspace user={user} mode="ouvidoria"/>}
+        {page === 'management' && <ServiceWorkspace user={user} mode="management"/>}
 
         {page === 'areas' && <section className="op-areas-layout">
-          <div className="op-areas-note"><LockKeyhole size={21}/><div><b>Implantação controlada por área</b><p>Estes são módulos planejados, não canais ativos. Nenhuma solicitação fora do BI é enviada automaticamente ou atribuída a uma equipe sem aprovação.</p></div></div>
+          <div className="op-areas-note"><LockKeyhole size={21}/><div><b>Implantação controlada por área</b><p>O formulário geral já recebe pedidos reais para triagem, mas o roteamento automático e as filas especializadas permanecem em implantação até haver responsáveis definidos.</p></div></div>
           <div className="op-areas-grid">
             <button type="button" className="op-area-card op-area-active" onClick={() => navigate('bi')}>
               <span className="op-area-icon"><BarChart3 size={25}/></span><span className="op-area-status is-enabled"><CheckCircle2 size={14}/> Módulo disponível</span>
@@ -333,7 +348,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
                 <span className="op-area-icon"><Icon size={25}/></span>
                 <span className="op-area-status">Em implantação</span>
                 <h3>{area.name}</h3><p>{area.description}</p>
-                <span className="op-area-cta is-disabled"><LockKeyhole size={15}/> Abertura ainda não habilitada</span>
+                <span className="op-area-cta is-disabled"><LockKeyhole size={15}/> Atendimento especializado ainda não habilitado</span>
               </article>;
             })}
           </div>
