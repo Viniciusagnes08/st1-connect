@@ -121,3 +121,12 @@ A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase d
 - **Gate:** verificar que uma implantação feita após definir a variável retorna `{"service":"bi-foundation","database":"ready"}`. Em caso de erro, não liberar produção nem assumir que o host foi validado.
 - A origem canônica do host é o diálogo Connect do Supabase, em `https://supabase.com/dashboard/project/cxqoypwsqokkwcirugrg?showConnect=true`; a UI pode ter variações.
 - Referências: https://supabase.com/docs/guides/database/connecting-to-postgres e https://supabase.com/kb/troubleshooting/tenant-or-user-not-found.
+
+
+## Cadeia TLS do Pooler (31/10/2026)
+
+- A API Preview com `ST1_DB_POOLER_HOST` ativo retornou `database:unavailable`, e o diagnostico temporario limitado a Preview revelou `SELF_SIGNED_CERT_IN_CHAIN` ao validar TLS.
+- A CA publica **Supabase Root 2021 CA** foi obtida do link oficial "Download certificate" nas configuracoes do banco: https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+- A CA foi adicionada em `DATABASE_SSL_CA` **somente no Preview da branch de BI**; o driver existente ja exige `ssl.rejectUnauthorized=true` e passa a CA ao Node. Nao usar `rejectUnauthorized:false`.
+- Um novo deploy gerado apos adicionar a variavel deve validar `GET /api/health?diagnose=1`. Se a categoria mudar para `POOLER_TENANT`, revisar indice do host no Connect do projeto, sem reconfigurar senha; se `AUTHENTICATION`, conferir role e credencial restrita.
+- Durante a homologacao, `?diagnose=1` so funciona com `VERCEL_ENV=preview` e retorna categorias nao sigilosas. Retirar esse diagnostico antes de publicar producao.
