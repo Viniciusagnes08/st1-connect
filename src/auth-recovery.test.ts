@@ -21,6 +21,8 @@ test('formulário do administrador funciona fora da sessão e solicita confirma�
   assert.match(ui,/As senhas digitadas não são iguais/);
   assert.match(ui,/Redefinir senha e entrar/);
   assert.match(ui,/Voltar ao login/);
+  assert.match(ui,/window\.location\.hash === '#\/recover'/);
+  assert.match(ui,/Recupere seu acesso/);
   assert.doesNotMatch(ui,/type="hidden" name="setupToken"/);
 });
 
