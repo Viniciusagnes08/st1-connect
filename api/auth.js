@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { decodeSession } from './_lib/auth-session.js';
-import { isMasterAdmin } from './_lib/master-admin.js';
+import { isMasterAdmin, canCreateAccount, canUpdateAccount } from './_lib/master-admin.js';
 import { verifyGoogleCredential, googleIdentityAllowed } from './_lib/google-oidc.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
@@ -50,6 +50,16 @@ const check = (password, stored) => {
 const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active, isMaster: isMasterAdmin(user), authMethod: user.googleAuthOnly === true ? 'google' : 'password', googlePending: user.googlePending === true });
 const error = (res, status, message) => res.status(status).json({ error: message });
 const noCache = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); };
+// A auditoria administrativa acompanha o diretorio privado na mesma escrita ETag.
+// Registro limitado a 1000 eventos; nao gravar senha, token ou e-mail no evento.
+const MAX_ADMIN_AUDIT_EVENTS = 1000;
+function auditEvent(state, actor, action, target, changes = {}) {
+  const previous = Array.isArray(state.auditTrail) ? state.auditTrail : [];
+  return [...previous.slice(-(MAX_ADMIN_AUDIT_EVENTS - 1)), {
+    id: randomBytes(12).toString('hex'), at: new Date().toISOString(),
+    actorUserId: actor?.id || null, targetUserId: target?.id || null, action, changes,
+  }];
+}
 const apiHeaders = () => ({
   Authorization: `Bearer ${token()}`,
   'x-vercel-blob-store-id': storeId(),
@@ -58,13 +68,13 @@ const apiHeaders = () => ({
 async function load() {
   const url = `https://${originHost()}/${STORE_FILE}?cache=0`;
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token()}` }, cache: 'no-store' });
-  if (response.status === 404) return { users: [], etag: null };
+  if (response.status === 404) return { users: [], etag: null, auditTrail: [] };
   if (!response.ok) throw new Error(`Não foi possível ler o cadastro (${response.status}).`);
   const data = await response.json();
-  if (!Array.isArray(data.users)) throw new Error('Cadastro inválido.');
-  return { users: data.users, etag: response.headers.get('etag') };
+  if (!Array.isArray(data.users) || (data.auditTrail !== undefined && !Array.isArray(data.auditTrail))) throw new Error('Cadastro inválido.');
+  return { users: data.users, etag: response.headers.get('etag'), auditTrail: data.auditTrail || [] };
 }
-async function save(users, etag) {
+async function save(users, etag, auditTrail) {
   const params = new URLSearchParams({ pathname: STORE_FILE });
   const response = await fetch(`https://vercel.com/api/blob/?${params}`, {
     method: 'PUT',
@@ -75,7 +85,7 @@ async function save(users, etag) {
       'x-add-random-suffix': '0',
       ...(etag ? { 'x-if-match': etag, 'x-allow-overwrite': '1' } : { 'x-allow-overwrite': '0' }),
     },
-    body: JSON.stringify({ version: 1, users }),
+    body: JSON.stringify({ version: 2, users, auditTrail }),
   });
   if (!response.ok) {
     if ([409, 412].includes(response.status)) {
@@ -157,7 +167,7 @@ export default async function handler(req, res) {
       const bootstrap = initialAdministrator();
       if (bootstrap) {
         try {
-          await save([bootstrap], null);
+          await save([bootstrap], null, []);
           state = await load();
         } catch (error) {
           if (error.status !== 409) throw error;
@@ -178,7 +188,7 @@ export default async function handler(req, res) {
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
       if (!validName(b.name) || !validEmail(b.email) || !validPassword(b.password)) return error(res, 400, 'Informe nome, e-mail e senha de 12 a 128 caracteres, com letras e números.');
       const admin = makeUser(b.name, b.email, b.password, 'Administrador');
-      await save([admin], null);
+      await save([admin], null, []);
       setSession(res, admin);
       return res.status(201).json({ user: identity(admin) });
     }
@@ -194,7 +204,7 @@ export default async function handler(req, res) {
       delete invitedUser.invitationHash;
       delete invitedUser.inviteExpiresAt;
       invitedUser.version += 1;
-      await save(state.users, state.etag);
+      await save(state.users, state.etag, auditEvent(state,invitedUser,'account_activated',invitedUser));
       setSession(res, invitedUser);
       return res.json({ user: identity(invitedUser) });
     }
@@ -224,7 +234,7 @@ export default async function handler(req, res) {
       admin.lastEmailRecoveryHash = expectedHash;
       delete admin.invitationHash;
       delete admin.inviteExpiresAt;
-      await save(state.users, state.etag);
+      await save(state.users, state.etag, auditEvent(state,null,'master_recovered_via_link',admin));
       setSession(res, admin);
       return res.json({ user: identity(admin) });
     }
@@ -251,7 +261,7 @@ export default async function handler(req, res) {
       admin.adminRecoveryUsedHash = secretHash; // A mesma credencial só pode ser usada uma vez.
       delete admin.invitationHash;
       delete admin.inviteExpiresAt;
-      await save(state.users, state.etag);
+      await save(state.users, state.etag, auditEvent(state,null,'master_recovered_via_code',admin));
       setSession(res, admin);
       return res.json({ user: identity(admin) });
     }
@@ -279,7 +289,7 @@ export default async function handler(req, res) {
         existing.name=validName(verified.name) ? verified.name : existing.name;
         existing.version+=1;
         account=existing;
-        await save(state.users,state.etag);
+        await save(state.users,state.etag,state.auditTrail);
       } else {
         account={
           id:randomBytes(12).toString('hex'),
@@ -288,7 +298,7 @@ export default async function handler(req, res) {
           googleSub:verified.sub,googleAuthOnly:true,version:1,attempts:0,blockedUntil:0,
           createdAt:new Date().toISOString(),
         };
-        await save([...state.users,account],state.etag);
+        await save([...state.users,account],state.etag,state.auditTrail);
       }
       setSession(res,account);
       return res.status(200).json({user:identity(account)});
@@ -301,11 +311,11 @@ export default async function handler(req, res) {
       if (!check(String(b.password || ''), user.passwordHash)) {
         user.attempts = (user.attempts || 0) + 1;
         if (user.attempts >= 5) { user.blockedUntil = Date.now() + 15 * 60 * 1000; user.attempts = 0; }
-        await save(state.users, state.etag);
+        await save(state.users, state.etag, state.auditTrail);
         return error(res, 401, 'E-mail ou senha incorretos.');
       }
       user.attempts = 0; user.blockedUntil = 0;
-      await save(state.users, state.etag);
+      await save(state.users, state.etag, state.auditTrail);
       setSession(res, user);
       return res.json({ user: identity(user) });
     }
@@ -316,7 +326,7 @@ export default async function handler(req, res) {
       if (!check(String(b.currentPassword || ''), me.passwordHash)) return error(res, 400, 'Senha atual incorreta.');
       if (!validPassword(b.newPassword)) return error(res, 400, 'Use pelo menos 12 caracteres, com letras e números.');
       me.passwordHash = hash(b.newPassword); me.version += 1;
-      await save(state.users, state.etag);
+      await save(state.users, state.etag, me.role === 'Administrador' ? auditEvent(state,me,'admin_password_changed',me) : state.auditTrail);
       setSession(res, me);
       return res.json({ user: identity(me) });
     }
@@ -333,29 +343,47 @@ export default async function handler(req, res) {
         passwordHash:'',role:'Solicitante',active:true,googlePending:true,
         googleAuthOnly:false,version:1,attempts:0,blockedUntil:0,createdAt:new Date().toISOString(),
       };
-      await save([...state.users,invitation],state.etag);
+      await save([...state.users,invitation],state.etag,auditEvent(state,me,'google_invite_created',invitation,{role:invitation.role}));
       return res.status(201).json({user:identity(invitation)});
+    }
+    if (action === 'audit' && req.method === 'GET') {
+      if (!isMasterAdmin(me)) return error(res,403,'Auditoria reservada ao Admin Master.');
+      return res.json({events:state.auditTrail.slice(-100)});
     }
     if (action === 'users' && req.method === 'GET') return res.json({ users: state.users.map(identity) });
     if (action === 'users' && req.method === 'POST') {
       if (!validName(b.name) || !validEmail(b.email) || !validPassword(b.password) || !ROLES.includes(b.role)) return error(res, 400, 'Preencha os dados, perfil e senha com pelo menos 12 caracteres, letras e números.');
+      if (!canCreateAccount(me,b.role)) return error(res,403,'Apenas o Admin Master pode criar contas administrativas.');
       if (state.users.some(u => u.email === b.email.trim().toLowerCase())) return error(res, 409, 'Este e-mail já está cadastrado.');
       const user = makeUser(b.name, b.email, b.password, b.role);
-      await save([...state.users, user], state.etag);
+      await save([...state.users, user], state.etag, auditEvent(state,me,'account_created',user,{role:user.role,active:true}));
       return res.status(201).json({ user: identity(user) });
     }
     if (action === 'user-update' && req.method === 'POST') {
       const user = state.users.find(u => u.id === b.id);
       if (!user) return error(res, 404, 'Usuário não encontrado.');
-      if (typeof b.role !== 'string' || !ROLES.includes(b.role) || typeof b.active !== 'boolean') return error(res, 400, 'Informe um perfil e situação válidos.');
-      if (user.id === me.id && (!b.active || b.role !== 'Administrador')) return error(res, 400, 'Não é possível remover o próprio acesso de administrador.');
-      if (user.role === 'Administrador' && (b.role !== 'Administrador' || !b.active) && !state.users.some(u => u.id !== user.id && u.role === 'Administrador' && u.active)) return error(res, 400, 'É necessário manter pelo menos um administrador ativo.');
+      if (typeof b.role !== 'string' || !ROLES.includes(b.role) || typeof b.active !== 'boolean')
+        return error(res, 400, 'Informe um perfil e situação válidos.');
+      if (user.id === me.id && (!b.active || b.role !== 'Administrador'))
+        return error(res, 400, 'Não é possível remover o próprio acesso de administrador.');
+      if (!canUpdateAccount(me,user,b.role,b.active))
+        return error(res, 403, 'Conta administrativa protegida. Somente o Admin Master pode modificar privilégios administrativos.');
+      if (b.password && user.id === me.id)
+        return error(res, 400, 'Para alterar sua senha, use Minha conta e informe a senha atual.');
+      if (b.password && user.googleAuthOnly === true)
+        return error(res, 400, 'A senha de uma conta Google não pode ser redefinida pelo ST1 Connect.');
+      if (b.password && !validPassword(b.password))
+        return error(res, 400, 'A nova senha precisa ter 12 caracteres, letras e números.');
+      if (user.role === 'Administrador' && (b.role !== 'Administrador' || !b.active) &&
+          !state.users.some(u => u.id !== user.id && u.role === 'Administrador' && u.active))
+        return error(res, 400, 'É necessário manter pelo menos um administrador ativo.');
+      const audited = auditEvent(state,me,'account_updated',user,{
+        previousRole:user.role,nextRole:b.role,
+        previousActive:user.active,nextActive:b.active,passwordReset:Boolean(b.password),
+      });
       user.role = b.role; user.active = b.active; user.version += 1;
-      if (b.password) {
-        if (!validPassword(b.password)) return error(res, 400, 'A nova senha precisa ter 12 caracteres, letras e números.');
-        user.passwordHash = hash(b.password);
-      }
-      await save(state.users, state.etag);
+      if (b.password) user.passwordHash = hash(b.password);
+      await save(state.users, state.etag, audited);
       return res.json({ user: identity(user) });
     }
     return error(res, 404, 'Rota não encontrada.');
