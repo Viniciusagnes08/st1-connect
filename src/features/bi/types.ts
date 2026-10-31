@@ -1,5 +1,6 @@
 export type BiState = 'Novo' | 'Em atendimento' | 'Pendente' | 'Resolvido' | 'Fechado';
-export type Scope = 'BI' | 'REVIEW' | 'EXTERNAL';
+export type Scope = 'BI' | 'REVIEW' | 'EXTERNAL' | 'OUVIDORIA' | 'GERAL';
+export type RequestState = BiState | 'Em triagem';
 
 export interface BiQueueItem {
   id: string;
@@ -20,7 +21,7 @@ export interface OwnRequest {
   topic_key: string;
   scope: Scope;
   created_at: string;
-  state: BiState | null;
+  state: RequestState | null;
 }
 export interface BiMembership {
   biRole: 'manager' | 'analyst';
