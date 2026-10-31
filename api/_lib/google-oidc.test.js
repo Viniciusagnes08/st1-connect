@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { verifyGoogleCredential, googleIdentityAllowed } from './google-oidc.js';
+import { verifyGoogleCredential, googleIdentityAllowed, googleReturningIdentityAllowed } from './google-oidc.js';
 
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const clientId='123456789000-test.apps.googleusercontent.com';
@@ -55,4 +55,34 @@ test('domínios públicos e e-mails externos só entram mediante convite corpora
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Solicitante',googlePending:true,active:true},{}),true);
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Administrador',googlePending:true,active:true},{}),false);
   assert.equal(googleIdentityAllowed(gmail,{email:'worker@gmail.com',role:'Solicitante',googlePending:false,active:true},{}),false);
+});
+
+test('nonce assinada impede token valido de outra tentativa de login',async()=>{
+ const nonce='mock-challenge-nonce-0123456789abcd';
+ await assert.rejects(
+  ()=>verifyGoogleCredential(jwt(base),clientId,fetcher,timestamp,nonce),
+  e=>e.status===401
+ );
+ const allowed=await verifyGoogleCredential(jwt({...base,nonce}),clientId,fetcher,timestamp,nonce);
+ assert.equal(allowed.email,'worker@st1.net.br');
+ await assert.rejects(
+  ()=>verifyGoogleCredential(jwt({...base,nonce:'wrong-nonce'}),clientId,fetcher,timestamp,nonce),
+  e=>e.status===401
+ );
+});
+test('conta Google ja vinculada exige dominio corporativo atual ou Gmail convidado',()=>{
+ const linked={id:'abc',email:'worker@st1.net.br',googleSub:base.sub,googleAuthOnly:true,active:true,role:'Supervisor'};
+ const identity={sub:base.sub,email:'worker@st1.net.br',hostedDomain:'st1.net.br'};
+ assert.equal(googleReturningIdentityAllowed(identity,linked,{}),true);
+ assert.equal(googleReturningIdentityAllowed({...identity,hostedDomain:null},linked,{}),false);
+ assert.equal(googleReturningIdentityAllowed({...identity,hostedDomain:'outro.com'},linked,{}),false);
+ assert.equal(googleReturningIdentityAllowed({...identity,sub:'9999999999'},linked,{}),false);
+ assert.equal(googleReturningIdentityAllowed(identity,{...linked,active:false},{}),false);
+ assert.equal(googleReturningIdentityAllowed(identity,{...linked,googleAuthOnly:false},{}),false);
+ assert.equal(googleReturningIdentityAllowed(identity,linked,{ST1_GOOGLE_WORKSPACE_DOMAIN:'other.com'}),false);
+ const gmail={sub:'44444444444',email:'testuser@gmail.com',hostedDomain:null};
+ const invitation={id:'invited',email:'testuser@gmail.com',googleSub:gmail.sub,googleAuthOnly:true,active:true,role:'Solicitante'};
+ assert.equal(googleReturningIdentityAllowed(gmail,invitation,{}),true);
+ assert.equal(googleReturningIdentityAllowed(gmail,{...invitation,role:'Administrador'},{}),false);
+ assert.equal(googleReturningIdentityAllowed({...gmail,hostedDomain:'some-company.com'},invitation,{}),false);
 });
