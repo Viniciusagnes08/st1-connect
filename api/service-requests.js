@@ -1,7 +1,7 @@
 import { currentPrincipal } from './_lib/identity.js';
 import { connection, inTransaction } from './_lib/db.js';
 import { SERVICE_FORMS } from './_lib/service-catalog.js';
-import { createServiceRequest, listServiceRequests, getServiceRequest, changeServiceRequest } from './_lib/service-service.js';
+import { createServiceRequest, listServiceRequests, getServiceRequest, changeServiceRequest, assignDepartmentRequest } from './_lib/service-service.js';
 import { validWriteOrigin, validateJsonBody, sendError } from './_lib/http.js';
 
 function ensureEnabled() {
@@ -29,8 +29,14 @@ export default async function handler(req,res) {
     if(req.method==='PATCH') {
       if(!validWriteOrigin(req))return res.status(403).json({error:'Origem não autorizada.'});
       const input=validateJsonBody(req,3000);
-      if(Object.keys(input).some(k=>!['id','state','reason'].includes(k)))
+      if(Object.keys(input).some(k=>!['id','state','reason','assignedTo','action'].includes(k)))
         return res.status(400).json({error:'Campos não permitidos.'});
+      if(input.action==='assign'){
+        if(typeof input.assignedTo!=='string')return res.status(400).json({error:'Responsável inválido.'});
+        const assigned=await inTransaction(tx=>assignDepartmentRequest(tx,principal,input.id,input.assignedTo));
+        return res.status(200).json({request:assigned});
+      }
+      if(input.action!==undefined)return res.status(400).json({error:'Ação inválida.'});
       const changed=await inTransaction(tx=>changeServiceRequest(tx,principal,input.id,input.state,input.reason||''));
       return res.status(200).json({request:changed});
     }
