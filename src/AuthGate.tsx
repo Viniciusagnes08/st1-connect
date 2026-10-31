@@ -34,6 +34,11 @@ export default function AuthGate() {
     if (!hash.startsWith('#/activate?')) return '';
     return new URLSearchParams(hash.split('?')[1] || '').get('token') || '';
   });
+  const [emailRecoveryToken] = useState(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#/recover-link?')) return '';
+    return new URLSearchParams(hash.split('?')[1] || '').get('token') || '';
+  });
   useEffect(() => {
     request('status').then(data => { setConfigured(data.configured); setUser(data.user); setRecoveryAvailable(data.adminRecoveryAvailable === true); }).catch(e => setError(e.message)).finally(() => setLoading(false));
   }, []);
@@ -43,13 +48,13 @@ export default function AuthGate() {
   };
   if (loading) return <div className="auth-loading"><span className="auth-spinner" />Preparando acesso seguro...</div>;
   if (user) return <App user={user} onLogout={exit} />;
-  return <LoginScreen setup={!configured && !inviteToken} inviteToken={inviteToken} recoveryAvailable={recoveryAvailable} error={error} onLogin={u => {
-    if (inviteToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/overview');
+  return <LoginScreen setup={!configured && !inviteToken && !emailRecoveryToken} inviteToken={inviteToken} emailRecoveryToken={emailRecoveryToken} recoveryAvailable={recoveryAvailable} error={error} onLogin={u => {
+    if (inviteToken || emailRecoveryToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/bi');
     setInviteToken(''); setUser(u); setError('');
   }} />;
 }
 
-function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialError, onLogin }: { setup: boolean; inviteToken: string; recoveryAvailable: boolean; error: string; onLogin: (user: Account) => void }) {
+function LoginScreen({ setup, inviteToken, emailRecoveryToken, recoveryAvailable, error: initialError, onLogin }: { setup: boolean; inviteToken: string; emailRecoveryToken: string; recoveryAvailable: boolean; error: string; onLogin: (user: Account) => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -58,15 +63,17 @@ function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialErro
     event.preventDefault(); setBusy(true); setError('');
     const data = new FormData(event.currentTarget);
     const payload = Object.fromEntries(data.entries());
-    const isRecovery = forgot && recoveryAvailable && !inviteToken && !setup;
-    if (inviteToken || isRecovery) {
+    const isRecovery = forgot && recoveryAvailable && !inviteToken && !setup && !emailRecoveryToken;
+    const viaEmailLink = Boolean(emailRecoveryToken);
+    if (inviteToken || isRecovery || viaEmailLink) {
       if (payload.password !== payload.confirmPassword) { setError('As senhas digitadas não são iguais.'); setBusy(false); return; }
       if (inviteToken) payload.inviteToken = inviteToken;
+      if (viaEmailLink) payload.recoveryToken = emailRecoveryToken;
       delete payload.confirmPassword;
     }
     try {
-      const response = await request(isRecovery ? 'recover-admin' : inviteToken ? 'activate' : setup ? 'setup' : 'login', payload);
-      if (isRecovery) window.location.hash = '/bi';
+      const response = await request(viaEmailLink ? 'recover-admin-link' : isRecovery ? 'recover-admin' : inviteToken ? 'activate' : setup ? 'setup' : 'login', payload);
+      if (isRecovery || viaEmailLink) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/bi');
       onLogin(response.user);
     } catch (e) { setError(e instanceof Error ? e.message : 'Falha no acesso.'); }
     finally { setBusy(false); }
@@ -87,10 +94,18 @@ function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialErro
       <div className="auth-mobile-brand"><b>st<span>1</span></b> connect</div>
       <div className="auth-form-shell">
         <div className="auth-symbol"><LockKeyhole size={26}/></div>
-        <div className="auth-overline">{inviteToken ? 'SEU CONVITE DE ACESSO' : setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
-        <h2>{inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : forgot && recoveryAvailable ? 'Recupere seu acesso' : 'Acesse sua conta'}</h2>
-        <p className="auth-subtitle">{inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : forgot && recoveryAvailable ? 'Defina uma nova senha sem precisar entrar na conta. Seu código administrativo é protegido no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
-        {forgot ? (recoveryAvailable && !setup && !inviteToken ?
+        <div className="auth-overline">{emailRecoveryToken ? 'REDEFINIÇÃO POR E-MAIL' : inviteToken ? 'SEU CONVITE DE ACESSO' : setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
+        <h2>{emailRecoveryToken ? 'Defina uma nova senha' : inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : forgot && recoveryAvailable ? 'Recupere seu acesso' : 'Acesse sua conta'}</h2>
+        <p className="auth-subtitle">{emailRecoveryToken ? 'Confirme a recuperação do administrador. Não é necessário informar a senha antiga nem códigos do Vercel.' : inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : forgot && recoveryAvailable ? 'Defina uma nova senha sem precisar entrar na conta. Seu código administrativo é protegido no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
+        {emailRecoveryToken ? <form className="auth-form auth-recovery-form" onSubmit={submit}>
+          <div className="auth-help auth-recovery-intro"><ShieldCheck size={23}/><h3>Link de recuperação confirmado</h3><p>Escolha uma nova senha para sua conta de administrador. Este link tem validade curta e só pode ser utilizado uma vez.</p></div>
+          <label>Nova senha<input name="password" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} autoComplete="new-password" placeholder="Mínimo 12 caracteres com letras e números" autoFocus/></label>
+          <label>Confirmar nova senha<input name="confirmPassword" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} autoComplete="new-password" placeholder="Repita a nova senha"/></label>
+          <button type="button" className="auth-recovery-visibility" onClick={() => setVisible(!visible)}>{visible ? 'Ocultar senhas' : 'Mostrar senhas'}</button>
+          {error && <div className="auth-error" role="alert">{error}</div>}
+          <p className="auth-recovery-caution"><ShieldCheck size={16}/> A senha será alterada apenas após a verificação do link. As sessões antigas serão encerradas.</p>
+          <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Validando link...' : 'Salvar nova senha e entrar'}<ArrowRight size={18}/></button>
+        </form> : forgot ? (recoveryAvailable && !setup && !inviteToken ?
           <form className="auth-form auth-recovery-form" onSubmit={submit}>
             <div className="auth-help auth-recovery-intro"><KeyRound size={23}/><h3>Recuperação segura do administrador</h3><p>Use o e-mail do administrador inicial e o código administrativo do Vercel. Este acesso só está disponível na prévia de testes e não exige sua senha antiga.</p></div>
             <label>E-mail do administrador<input name="email" type="email" required autoComplete="username" placeholder="E-mail da conta inicial"/></label>
