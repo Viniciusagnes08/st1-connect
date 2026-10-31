@@ -10,7 +10,7 @@ import {
   getMyRequests, getSquadMembers, setBiMember, updateBiState,
 } from './api';
 import { canDisplayQueue, scopeLabel, stateTone } from './bi-views';
-import type { BiQueueItem, BiSelf, BiState, OwnRequest, SquadMember, TicketDetail } from './types';
+import type { BiQueueItem, BiSelf, BiState, OwnRequest, SquadMember, TicketDetail, RequestState } from './types';
 import './bi-workspace.css';
 
 type User = { id:string; name:string; email:string; role:string };
@@ -21,10 +21,10 @@ const DATE_FORMAT = new Intl.DateTimeFormat('pt-BR',{
 function niceDate(value:string) {
   try {return DATE_FORMAT.format(new Date(value));} catch {return '—';}
 }
-function statusStyle(state:BiState | null) {
+function statusStyle(state:RequestState | null) {
   return state ? 'bi-status bi-status-'+stateTone(state) : 'bi-status bi-status-new';
 }
-function StatusTag({state}: {state:BiState | null}) {
+function StatusTag({state}: {state:RequestState | null}) {
   return <span className={statusStyle(state)}><i />{state || 'Aguardando triagem'}</span>;
 }
 function MiniEmpty({title,description}: {title:string;description:string}) {
@@ -53,7 +53,7 @@ export default function BIWorkspace({ user }: { user: User }) {
     setRefreshing(true);setError('');
     try {
       const [session,requests]=await Promise.all([getBiSelf(),getMyRequests()]);
-      setSelf(session);setMine(requests);
+      setSelf(session);setMine(requests.filter(item=>item.scope==='BI'));
     } catch(e) {
       setError(e instanceof Error ? e.message : 'Não foi possível acessar o BI.');
     } finally {setLoading(false);setRefreshing(false);}
@@ -90,7 +90,7 @@ export default function BIWorkspace({ user }: { user: User }) {
       setNotice('Solicitação '+result.protocol+' registrada na fila do BI.');
       idempotencyKey.current=crypto.randomUUID();
       setFormTitle('');setFormDescription('');
-      setMine(await getMyRequests());
+      setMine((await getMyRequests()).filter(item=>item.scope==='BI'));
       setTab('mine');
     }catch(e){setError(e instanceof Error?e.message:'Falha ao criar solicitação.');}
     finally{setBusy(false);}
@@ -111,7 +111,7 @@ export default function BIWorkspace({ user }: { user: User }) {
     try{
       await updateBiState(selected.ticket.id,state,note);
       setSelected(await getBiTicket(selected.ticket.id));
-      await Promise.all([refreshQueue(),getMyRequests().then(setMine)]);
+      await Promise.all([refreshQueue(),getMyRequests().then(items=>setMine(items.filter(item=>item.scope==='BI')))]);
       setNote('');
       setNotice('Situação do chamado atualizada.');
     }catch(e){setError(e instanceof Error?e.message:'Falha ao atualizar situação.');}
