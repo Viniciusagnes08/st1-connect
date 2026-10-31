@@ -31,7 +31,15 @@ export default async function handler(req,res) {
     // Confirma schema privado, privilegio SELECT e policy RLS da role do backend.
     // LIMIT 0 nao le nem expõe dados de usuarios.
     await db.query('SELECT id FROM st1_bi.request_records LIMIT 0');
-    return res.status(200).json({service:'bi-foundation',database:'ready'});
+    const servicesEnabled = process.env.ST1_SERVICES_ENABLED === 'true';
+    if (servicesEnabled) {
+      // Confirma acesso real à tabela privada de serviços sem inspecionar registros.
+      await db.query('SELECT id FROM st1_services.requests LIMIT 0');
+    }
+    return res.status(200).json({
+      service:'st1-connect',database:'ready',
+      modules:{bi:'ready',services:servicesEnabled ? 'ready' : 'disabled'},
+    });
   } catch (error) {
     const diagnostic = process.env.VERCEL_ENV==='preview' && req.query?.diagnose==='1';
     if (diagnostic) {
