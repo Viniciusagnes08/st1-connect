@@ -146,6 +146,7 @@ export function ProfilePanel({ user, onLogout, onClose }: { user: Account; onLog
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [googleInviting, setGoogleInviting] = useState(false);
   const refresh = async () => {
     if (user.role !== 'Administrador') return;
     try { const data = await request('users'); setUsers(data.users); } catch(e) { setError(e instanceof Error ? e.message : 'Falha ao carregar usuários.'); }
@@ -156,6 +157,18 @@ export function ProfilePanel({ user, onLogout, onClose }: { user: Account; onLog
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     try { await request('users', payload); await refresh(); setAdding(false); setNotice('Usuário cadastrado com sucesso.'); }
     catch(e) { setError(e instanceof Error ? e.message : 'Não foi possível cadastrar.'); } finally { setBusy(false); }
+  };
+  const submitGoogleInvite = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true);setError('');setNotice('');
+    try {
+      const form=event.currentTarget;
+      const email=String(new FormData(form).get('email')||'').trim();
+      await request('google-invite',{email});
+      await refresh();setGoogleInviting(false);setNotice('Convite Google autorizado. O colaborador pode entrar com o e-mail cadastrado após a ativação do Google.');
+      form.reset();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível autorizar Gmail.');
+    } finally {setBusy(false);}
   };
   const change = async (target: Account, patch: { role?: Role; active?: boolean }) => {
     setBusy(true);setError('');setNotice('');
@@ -174,11 +187,12 @@ export function ProfilePanel({ user, onLogout, onClose }: { user: Account; onLog
       <div className="auth-management-tabs"><button className={tab==='profile'?'selected':''} onClick={()=>setTab('profile')}><UserRound size={16}/> Minha conta</button>{user.role==='Administrador' && <button className={tab==='users'?'selected':''} onClick={()=>setTab('users')}><Users size={16}/> Usuários e permissões</button>}</div>
       <div className="auth-management-body">
         {error && <p className="auth-inline-error" role="alert">{error}</p>}{notice && <p className="auth-inline-ok" role="status">{notice}</p>}
-        {tab === 'profile' ? <><div className="auth-person"><span>{user.name.slice(0,2).toUpperCase()}</span><div><b>{user.name}</b><p>{user.email}</p><small>{roleHelp[user.role]}</small></div></div><h3>Alterar minha senha</h3><form onSubmit={password} className="auth-small-form"><label>Senha atual<input name="currentPassword" type="password" required autoComplete="current-password"/></label><label>Nova senha<input name="newPassword" type="password" minLength={12} maxLength={128} required autoComplete="new-password" placeholder="12 caracteres, letras e números"/></label><button type="submit" disabled={busy}>Salvar nova senha</button></form></> :
+        {tab === 'profile' ? <><div className="auth-person"><span>{user.name.slice(0,2).toUpperCase()}</span><div><b>{user.name}</b><p>{user.email}</p><small>{roleHelp[user.role]}</small></div></div>{user.authMethod==='google' ? <><h3>Entrada com Google</h3><div className="auth-provider-note">Esta conta utiliza a autenticação do Google. O ST1 Connect não guarda nem permite redefinir sua senha do Google. Para alterar sua senha, use as configurações da sua Conta Google.</div></> : <><h3>Alterar minha senha</h3><form onSubmit={password} className="auth-small-form"><label>Senha atual<input name="currentPassword" type="password" required autoComplete="current-password"/></label><label>Nova senha<input name="newPassword" type="password" minLength={12} maxLength={128} required autoComplete="new-password" placeholder="12 caracteres, letras e números"/></label><button type="submit" disabled={busy}>Salvar nova senha</button></form></>}</> :
         <><div className="auth-users-heading"><div><h3>Contas autorizadas</h3><p>Controle quem acessa a central e qual perfil utiliza.</p></div><button onClick={()=>setAdding(!adding)}><Plus size={15}/> Novo usuário</button></div>
         {adding && <form className="auth-add-user" onSubmit={submitUser}><label>Nome<input name="name" required minLength={3} placeholder="Nome completo"/></label><label>E-mail<input name="email" required type="email" placeholder="email@empresa.com.br"/></label><label>Perfil<select name="role">{roles.map(r=><option key={r}>{r}</option>)}</select></label><label>Senha provisória<input name="password" type="password" required minLength={12} maxLength={128} placeholder="12 caracteres, letras e números"/></label><div><button type="button" className="auth-secondary" onClick={()=>setAdding(false)}>Cancelar</button><button type="submit" disabled={busy}>Criar acesso</button></div></form>}
-        <div className="auth-user-list">{users.map(account=><div key={account.id} className="auth-user-row"><span className="auth-user-avatar">{account.name.slice(0,2).toUpperCase()}</span><div className="auth-user-desc"><b>{account.name}</b><small>{account.email}</small><span className={account.active?'active':'inactive'}>{account.active?'Ativo':'Desativado'}</span></div><select aria-label={`Perfil de ${account.name}`} value={account.role} disabled={busy||account.id===user.id} onChange={e=>change(account,{role:e.target.value as Role})}>{roles.map(role=><option key={role}>{role}</option>)}</select><button type="button" className="auth-user-toggle" disabled={busy||account.id===user.id} onClick={()=>change(account,{active:!account.active})}>{account.active?'Desativar':'Ativar'}</button></div>)}</div>
-        <p className="auth-user-hint">Novos usuários recebem uma senha inicial definida pelo administrador. Eles podem alterá-la em Minha conta.</p></>}
+        {user.isMaster && <div className="auth-google-invite"><h4>Autorizar Gmail pessoal</h4><p>Gmail não corporativo entra apenas após autorização do Admin Master, sempre como Solicitante. A conta Google deve confirmar o próprio e-mail.</p><button type="button" onClick={()=>setGoogleInviting(v=>!v)} disabled={busy}><Plus size={15}/>Autorizar e-mail Gmail</button>{googleInviting && <form className="auth-add-user" onSubmit={submitGoogleInvite}><label>E-mail Gmail<input name="email" type="email" required placeholder="colaborador@gmail.com" autoComplete="off"/></label><button type="submit" disabled={busy}>Salvar autorização</button></form>}</div>}
+        <div className="auth-user-list">{users.map(account=><div key={account.id} className="auth-user-row"><span className="auth-user-avatar">{account.name.slice(0,2).toUpperCase()}</span><div className="auth-user-desc"><b>{account.name}</b><small>{account.email}</small><span className={account.active?'active':'inactive'}>{!account.active?'Desativado':account.googlePending?'Convite Google pendente':account.authMethod==='google'?'Google ativo':'Ativo'}</span></div><select aria-label={`Perfil de ${account.name}`} value={account.role} disabled={busy||account.id===user.id} onChange={e=>change(account,{role:e.target.value as Role})}>{roles.map(role=><option key={role}>{role}</option>)}</select><button type="button" className="auth-user-toggle" disabled={busy||account.id===user.id} onClick={()=>change(account,{active:!account.active})}>{account.active?'Desativar':'Ativar'}</button></div>)}</div>
+        <p className="auth-user-hint">Acessos criados manualmente possuem senha inicial. Contas Google corporativas ou Gmail autorizado entram com Google e começam como Solicitante.</p></>}
       </div>
       <footer className="auth-management-footer"><button onClick={onLogout}><LogOut size={17}/> Sair da conta</button><span><ShieldCheck size={15}/> Sessão protegida</span></footer>
     </section>
