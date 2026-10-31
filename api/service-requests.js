@@ -85,6 +85,8 @@ export default async function handler(req,res) {
         return res.status(400).json({error:'Campos não permitidos.'});
       if(input.action==='assign'){
         if(typeof input.assignedTo!=='string')return res.status(400).json({error:'Responsável inválido.'});
+        const activeDirectory=await loadDirectory();
+        if(!activeDirectory.some(person=>person.id===input.assignedTo&&person.active===true))return res.status(400).json({error:'Responsável sem conta ativa.'});
         const assigned=await inTransaction(tx=>assignDepartmentRequest(tx,principal,input.id,input.assignedTo));
         return res.status(200).json({request:assigned});
       }
