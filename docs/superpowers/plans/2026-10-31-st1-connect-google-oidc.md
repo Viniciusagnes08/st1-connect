@@ -32,7 +32,7 @@
 
 ## Task 5 — Verification and release gate
 - [x] `npm test`, TypeScript and Vite pass; three GitHub Actions suites green.
-- [x] Preview deployment READY, `main` untouched.
+- [ ] Preview deployment of latest code READY, `main` untouched. **Blocked:** Vercel returned HTTP 402 `api-deployments-free-per-day` (more than 100 deployments; retry after quota reset), so the branch alias still serves an older commit. No production change.
 - [ ] Manual E2E in authorized browser after Google Cloud origin registration: corporate, invited Gmail, noninvited Gmail, deactivated account, logout and Master protection.
 - [ ] Retain Preview SSO; no general production release without Google Cloud and real-account E2E confirmation.
 
@@ -48,11 +48,16 @@ Do not append `/?utm_source=...`, `#/overview`, `/api/auth`, or a trailing path.
 
 ## QA execution evidence
 
-- Full CI with nonce handshake and existing Google contracts: **119 tests passing, 0 failed** at commit `1c53686cc9372429dfa99adf6d2f181c3b4c5494`. All three GitHub workflows passed.
-- Additional Gmail-hosted-domain validation included in later commits; recheck corresponding CI after the final documentation commit.
+- Full CI with nonce handshake, Gmail hosted-domain validation and existing Google contracts: **119 tests passing, 0 failed** at commit `0f0ae491a498be9d0bf9cfaa506ed1c70c80b245`. All three GitHub workflows passed, including TypeScript and Vite build.
 - Vercel Preview config: `ST1_GOOGLE_CLIENT_ID` is present and well-formed; SSO protection remains enabled.
 - Required Google Cloud origin still **unverified/unconfigured by connector**, so real login remains pending.
 - Detailed runbook: `docs/operations/st1-connect-google-oidc-runbook-20261031.md`.
+
+## Deployment blocker
+
+- Attempted manual Git-based Preview deployment of verified SHA `0f0ae491a498be9d0bf9cfaa506ed1c70c80b245`; Vercel denied with HTTP 402 `api-deployments-free-per-day` and `retryAfter: 86400`.
+- The displayed Preview URL is **not** proof of the new OAuth code being deployed; verify deployment SHA equals the latest branch commit before testing.
+- Do not disable SSO, promote to production or change billing without user approval.
 
 ## Rollback
 
