@@ -11,7 +11,7 @@ const credentials=(email='worker@st1.net.br',hd='st1.net.br',sub='12345678901234
   const header=Buffer.from(JSON.stringify({alg:'RS256',kid:'synthetic-key'})).toString('base64url');
   const body=Buffer.from(JSON.stringify({
     iss:'https://accounts.google.com',aud:clientId,sub,email,
-    email_verified:true,hd,name:'Colaborador ST1',iat:NOW-5,exp:NOW+1800,nonce,
+    email_verified:true,...(hd?{hd}:{}),name:'Colaborador ST1',iat:NOW-5,exp:NOW+1800,nonce,
   })).toString('base64url');
   const payload=header+'.'+body;
   return payload+'.'+sign('RSA-SHA256',Buffer.from(payload),privateKey).toString('base64url');
@@ -93,7 +93,7 @@ test('Google Workspace autenticado entra somente como Solicitante, com cookie va
 test('Gmail pessoal não autorizado não se cadastra; convite do Master permite login seguro',async()=>{
   await fixture(async({call,googleLogin,users})=>{
     const gmail='commercial.worker@gmail.com';
-    assert.equal((await googleLogin(gmail,undefined,'23456789012345678901')).statusCode,403);
+    assert.equal((await googleLogin(gmail,null,'23456789012345678901')).statusCode,403);
     assert.equal(users().length,1);
     const admin=await call('login',{body:{email:'master@st1.net.br',password:'SyntheticAdminPassword123'}});
     assert.equal(admin.statusCode,200);
@@ -102,7 +102,7 @@ test('Gmail pessoal não autorizado não se cadastra; convite do Master permite 
     const invite=await call('google-invite',{body:{email:gmail},cookie:adminCookie});
     assert.equal(invite.statusCode,201);
     assert.equal(invite.body.user.googlePending,true);
-    const accepted=await googleLogin(gmail,undefined,'23456789012345678901');
+    const accepted=await googleLogin(gmail,null,'23456789012345678901');
     assert.equal(accepted.statusCode,200);
     assert.equal(accepted.body.user.role,'Solicitante');
     assert.equal(accepted.body.user.isMaster,false);
