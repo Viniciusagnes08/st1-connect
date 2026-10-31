@@ -1,11 +1,39 @@
 // Apenas servidor. Nunca incluir esta biblioteca no bundle Vite.
 let clientPromise;
 
+// Projeto de BI criado exclusivamente para o ST1 Connect (nunca ST1 Academy).
+// O host do pooler e publico; a senha permanece na DATABASE_URL privada do Vercel.
+const ST1_CONNECT_PROJECT_REF = 'cxqoypwsqokkwcirugrg';
+const DIRECT_HOST = `db.${ST1_CONNECT_PROJECT_REF}.supabase.co`;
+
 export function requireDatabaseUrl(env = process.env) {
-  const url = env.DATABASE_URL;
-  if (typeof url !== 'string' || !/^postgres(ql)?:\/\//.test(url))
+  const direct = env.DATABASE_URL;
+  if (typeof direct !== 'string' || !/^postgres(ql)?:\/\//.test(direct))
     throw new Error('DATABASE_URL indisponível');
-  return url;
+
+  const poolerHost = env.ST1_DB_POOLER_HOST;
+  if (!poolerHost) return direct;
+
+  // A alternativa IPv4 e apenas para a branch Preview. Nao migrar prod por engano.
+  if (env.VERCEL_ENV && env.VERCEL_ENV !== 'preview')
+    throw new Error('Pooler somente autorizado em Preview');
+  if (!/^aws-[0-9]+-sa-east-1\.pooler\.supabase\.com$/.test(poolerHost))
+    throw new Error('Host de Pooler invalido');
+
+  let url;
+  try { url = new URL(direct); }
+  catch { throw new Error('DATABASE_URL invalida'); }
+  if (url.hostname !== DIRECT_HOST || url.port !== '5432' ||
+      decodeURIComponent(url.username) !== 'st1_connect_runtime' ||
+      url.pathname !== '/postgres')
+    throw new Error('A URL nao corresponde ao banco e usuario isolados ST1 Connect');
+
+  // Pooler compartilhado exige role.<project-ref>, diferente da conexao direta.
+  // Mantem a senha intacta dentro do runtime, sem grava-la ou expo-la em logs.
+  url.hostname = poolerHost;
+  url.port = '6543';
+  url.username = `st1_connect_runtime.${ST1_CONNECT_PROJECT_REF}`;
+  return url.toString();
 }
 
 export function databaseOptions(env = process.env) {
