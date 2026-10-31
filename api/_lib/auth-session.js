@@ -26,8 +26,10 @@ export function decodeSession(cookieHeader, secret, users, now = Date.now()) {
     if (!Number.isSafeInteger(data.exp) || data.exp <= now / 1000 ||
       typeof data.uid !== 'string' || !Number.isSafeInteger(data.ver)) return null;
     return users.find(user => user.id === data.uid && user.version === data.ver &&
-      user.active === true && typeof user.passwordHash === 'string' &&
-      user.passwordHash.length > 0) || null;
+      user.active === true && (
+        (typeof user.passwordHash === 'string' && user.passwordHash.length > 0) ||
+        (user.googleAuthOnly === true && typeof user.googleSub === 'string' && /^[0-9]{8,40}$/.test(user.googleSub))
+      )) || null;
   } catch {
     return null;
   }
