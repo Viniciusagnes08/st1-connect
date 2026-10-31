@@ -26,6 +26,7 @@ async function request(action: string, body?: object) {
 export default function AuthGate() {
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(true);
+  const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [user, setUser] = useState<Account | null>(null);
   const [error, setError] = useState('');
   const [inviteToken, setInviteToken] = useState(() => {
@@ -34,7 +35,7 @@ export default function AuthGate() {
     return new URLSearchParams(hash.split('?')[1] || '').get('token') || '';
   });
   useEffect(() => {
-    request('status').then(data => { setConfigured(data.configured); setUser(data.user); }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    request('status').then(data => { setConfigured(data.configured); setUser(data.user); setRecoveryAvailable(data.adminRecoveryAvailable === true); }).catch(e => setError(e.message)).finally(() => setLoading(false));
   }, []);
   const exit = async () => {
     try { await request('logout', {}); } catch { /* Expired server-side session still means local sign-out. */ }
@@ -42,13 +43,13 @@ export default function AuthGate() {
   };
   if (loading) return <div className="auth-loading"><span className="auth-spinner" />Preparando acesso seguro...</div>;
   if (user) return <App user={user} onLogout={exit} />;
-  return <LoginScreen setup={!configured && !inviteToken} inviteToken={inviteToken} error={error} onLogin={u => {
+  return <LoginScreen setup={!configured && !inviteToken} inviteToken={inviteToken} recoveryAvailable={recoveryAvailable} error={error} onLogin={u => {
     if (inviteToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/overview');
     setInviteToken(''); setUser(u); setError('');
   }} />;
 }
 
-function LoginScreen({ setup, inviteToken, error: initialError, onLogin }: { setup: boolean; inviteToken: string; error: string; onLogin: (user: Account) => void }) {
+function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialError, onLogin }: { setup: boolean; inviteToken: string; recoveryAvailable: boolean; error: string; onLogin: (user: Account) => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -57,13 +58,15 @@ function LoginScreen({ setup, inviteToken, error: initialError, onLogin }: { set
     event.preventDefault(); setBusy(true); setError('');
     const data = new FormData(event.currentTarget);
     const payload = Object.fromEntries(data.entries());
-    if (inviteToken) {
+    const isRecovery = forgot && recoveryAvailable && !inviteToken && !setup;
+    if (inviteToken || isRecovery) {
       if (payload.password !== payload.confirmPassword) { setError('As senhas digitadas não são iguais.'); setBusy(false); return; }
-      payload.inviteToken = inviteToken;
+      if (inviteToken) payload.inviteToken = inviteToken;
       delete payload.confirmPassword;
     }
     try {
-      const response = await request(inviteToken ? 'activate' : setup ? 'setup' : 'login', payload);
+      const response = await request(isRecovery ? 'recover-admin' : inviteToken ? 'activate' : setup ? 'setup' : 'login', payload);
+      if (isRecovery) window.location.hash = '/bi';
       onLogin(response.user);
     } catch (e) { setError(e instanceof Error ? e.message : 'Falha no acesso.'); }
     finally { setBusy(false); }
@@ -87,13 +90,27 @@ function LoginScreen({ setup, inviteToken, error: initialError, onLogin }: { set
         <div className="auth-overline">{inviteToken ? 'SEU CONVITE DE ACESSO' : setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
         <h2>{inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : 'Acesse sua conta'}</h2>
         <p className="auth-subtitle">{inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
-        {forgot ? <div className="auth-help"><KeyRound size={22}/><h3>Precisa recuperar o acesso?</h3><p>Solicite a redefinição da sua senha ao administrador do ST1 Connect. Por segurança, não existe recuperação por e-mail nesta versão.</p><button type="button" className="auth-text-button" onClick={() => setForgot(false)}>Voltar para o login</button></div> : <form className="auth-form" onSubmit={submit}>
+        {forgot ? (recoveryAvailable && !setup && !inviteToken ?
+          <form className="auth-form auth-recovery-form" onSubmit={submit}>
+            <div className="auth-help auth-recovery-intro"><KeyRound size={23}/><h3>Recuperação segura do administrador</h3><p>Use o e-mail do administrador inicial e o código administrativo do Vercel. Este acesso só está disponível na prévia de testes e não exige sua senha antiga.</p></div>
+            <label>E-mail do administrador<input name="email" type="email" required autoComplete="username" placeholder="E-mail da conta inicial"/></label>
+            <label>Código administrativo de recuperação<input name="setupToken" type="password" required minLength={24} autoComplete="off" placeholder="Código guardado no Vercel"/></label>
+            <label>Nova senha<input name="password" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} autoComplete="new-password" placeholder="12 ou mais caracteres, com letras e números"/></label>
+            <label>Confirmar nova senha<input name="confirmPassword" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} autoComplete="new-password" placeholder="Digite a nova senha novamente"/></label>
+            <button type="button" className="auth-recovery-visibility" onClick={() => setVisible(!visible)}>{visible ? 'Ocultar senhas' : 'Mostrar senhas'}</button>
+            {error && <div className="auth-error" role="alert">{error}</div>}
+            <p className="auth-recovery-caution"><ShieldCheck size={16}/> O código é de uso único. Todas as sessões anteriores serão encerradas.</p>
+            <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Verificando recuperação...' : 'Redefinir senha e entrar'}<ArrowRight size={18}/></button>
+            <button type="button" className="auth-text-button auth-recovery-return" onClick={() => {setError('');setForgot(false);}}>Voltar ao login</button>
+          </form> :
+          <div className="auth-help"><KeyRound size={22}/><h3>Precisa recuperar o acesso?</h3><p>O administrador pode redefinir a senha pelo painel de usuários. Se você é o administrador inicial e perdeu seu acesso, solicite a habilitação da recuperação administrativa na prévia, sem compartilhar sua senha.</p><button type="button" className="auth-text-button" onClick={() => {setError('');setForgot(false);}}>Voltar para o login</button></div>
+        ) : <form className="auth-form" onSubmit={submit}>
           {setup && <><label>Seu nome completo<input name="name" required minLength={3} maxLength={80} placeholder="Nome e sobrenome" autoComplete="name"/></label><label>Código de ativação<input name="setupToken" type="password" required autoComplete="off" placeholder="Código privado do administrador"/></label></>}
           {inviteToken ? <div className="auth-invite-email"><UserRound size={18}/><div><small>Conta reservada para</small><strong>Viniciusagnes@st1.net.br</strong><span>Administrador · ST1 Connect</span></div><ShieldCheck size={20}/></div> : <label>E-mail corporativo<input name="email" type="email" required maxLength={180} placeholder="seu.email@empresa.com.br" autoComplete="username" autoFocus /></label>}
           <label>{inviteToken ? 'Crie sua senha' : 'Senha'}<div className="auth-password"><input name="password" type={visible ? 'text' : 'password'} required minLength={setup || inviteToken ? 12 : 1} maxLength={128} placeholder={setup || inviteToken ? 'Mínimo de 12 caracteres com letras e números' : 'Digite sua senha'} autoComplete={setup || inviteToken ? 'new-password' : 'current-password'} autoFocus={Boolean(inviteToken)}/><button type="button" aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={18}/> : <Eye size={18}/>}</button></div></label>
           {inviteToken && <label>Confirme sua senha<input name="confirmPassword" type={visible ? 'text' : 'password'} required minLength={12} maxLength={128} placeholder="Repita a senha escolhida" autoComplete="new-password"/></label>}
           {error && <div className="auth-error" role="alert">{error}</div>}
-          {!setup && !inviteToken && <button type="button" className="auth-forgot" onClick={() => setForgot(true)}>Esqueci minha senha</button>}
+          {!setup && !inviteToken && <button type="button" className="auth-forgot" onClick={() => {setError('');setForgot(true);}}>Esqueci minha senha</button>}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Validando acesso...' : inviteToken ? 'Ativar minha conta' : setup ? 'Ativar administrador' : 'Entrar no ST1 Connect'}<ArrowRight size={18}/></button>
         </form>}
         <div className="auth-footer"><ShieldCheck size={15}/> Acesso protegido e exclusivo para usuários autorizados.</div>
