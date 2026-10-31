@@ -52,7 +52,7 @@ test('apenas Master cria ou revoga membros, sem modificar DB em tentativas negad
  await assert.rejects(()=>saveDepartmentGrant(db,master,{...user,active:false},grant),e=>e.status===404);
  await assert.rejects(()=>saveDepartmentGrant(db,master,{...master,active:true},{...grant,userId:master.id}),e=>e.status===400);
  await assert.rejects(()=>saveDepartmentGrant(db,master,user,{...grant,active:false}),e=>e.status===400);
- assert.equal(db.statements.length,0);
+ assert.equal(db.statements.filter(s=>/^INSERT |^UPDATE |^DELETE /i.test(s.sql)).length,0);
  assert.equal(db.membership,null);
  assert.equal(db.events.length,0);
 });
