@@ -39,6 +39,7 @@ export default async function handler(req,res) {
         diagnostic:{
           connection: process.env.ST1_DB_POOLER_HOST ? 'pooler' : 'direct',
           category: classifyDatabaseError(error),
+          code: ['ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE','UNABLE_TO_GET_ISSUER_CERT_LOCALLY','SELF_SIGNED_CERT_IN_CHAIN','ERR_SSL_WRONG_VERSION_NUMBER','ECONNRESET','ETIMEDOUT'].includes(error?.code) ? error.code : 'OTHER',
         },
       });
     }
