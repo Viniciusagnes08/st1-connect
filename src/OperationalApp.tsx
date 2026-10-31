@@ -9,13 +9,14 @@ import type { Account } from './AuthGate';
 import { ProfilePanel } from './AuthGate';
 import BIWorkspace from './features/bi/BIWorkspace';
 import ServiceWorkspace from './features/services/ServiceWorkspace';
+import DepartmentWorkspace from './features/services/DepartmentWorkspace';
 import { getMyRequests } from './features/bi/api';
 import type { OwnRequest } from './features/bi/types';
 import { scopeLabel } from './features/bi/bi-views';
 import { downloadLegacyBackup, readLegacyBackup } from './legacy-backup';
 import './operational.css';
 
-type Page = 'overview' | 'requests' | 'bi' | 'services' | 'ouvidoria' | 'management' | 'areas' | 'legacy';
+type Page = 'overview' | 'requests' | 'bi' | 'services' | 'ouvidoria' | 'management' | 'areas' | 'departments' | 'legacy';
 type LoadResult =
   | { kind: 'loading'; items: OwnRequest[] }
   | { kind: 'ready'; items: OwnRequest[] }
@@ -26,7 +27,7 @@ type LegacyState =
   | { kind: 'empty' }
   | { kind: 'error'; message: string };
 
-const ROUTES = new Set<Page>(['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'legacy']);
+const ROUTES = new Set<Page>(['overview', 'requests', 'bi', 'services', 'ouvidoria', 'management', 'areas', 'departments', 'legacy']);
 const PAGE_LABELS: Record<Page, string> = {
   overview: 'Visão geral',
   requests: 'Minhas solicitações',
@@ -35,6 +36,7 @@ const PAGE_LABELS: Record<Page, string> = {
   ouvidoria: 'Ouvidoria',
   management: 'Admin Master',
   areas: 'Áreas de atendimento',
+  departments: 'Equipes e departamentos',
   legacy: 'Dados locais anteriores',
 };
 const FUTURE_AREAS = [
@@ -238,6 +240,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
           {navItem('ouvidoria', 'Ouvidoria', ShieldCheck)}
           {user.isMaster && navItem('management', 'Gestão Master', MonitorCog)}
           {navItem('areas', 'Outras áreas', Users)}
+          {navItem('departments', 'Equipes e departamentos', Users)}
         </div>
         <div className="sidebar-nav-group">
           <div className="nav-section-label">CONTINUIDADE DOS DADOS</div>
@@ -280,6 +283,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
                 page === 'ouvidoria' ? 'Canal reservado para manifestações e acompanhamento pelo solicitante.' :
                 page === 'management' ? 'Visão de triagem administrativa para a conta master autenticada.' :
                 page === 'areas' ? 'Expansão progressiva por área, com responsáveis e dados validados.' :
+                page === 'departments' ? 'Filas e permissões de acesso específicas de cada área.' :
                 'Preservação de registros anteriores do navegador, sem importação automática.'}
             </p>
           </div>
@@ -334,6 +338,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
         {page === 'ouvidoria' && <ServiceWorkspace user={user} mode="ouvidoria"/>}
         {page === 'management' && <ServiceWorkspace user={user} mode="management"/>}
 
+        {page === 'departments' && <DepartmentWorkspace user={user}/>}
         {page === 'areas' && <section className="op-areas-layout">
           <div className="op-areas-note"><LockKeyhole size={21}/><div><b>Implantação controlada por área</b><p>O formulário geral já recebe pedidos reais para triagem, mas o roteamento automático e as filas especializadas permanecem em implantação até haver responsáveis definidos.</p></div></div>
           <div className="op-areas-grid">
