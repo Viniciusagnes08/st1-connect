@@ -53,7 +53,7 @@ function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialErro
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [forgot, setForgot] = useState(false);
+  const [forgot, setForgot] = useState(() => window.location.hash === '#/recover');
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError('');
     const data = new FormData(event.currentTarget);
@@ -88,8 +88,8 @@ function LoginScreen({ setup, inviteToken, recoveryAvailable, error: initialErro
       <div className="auth-form-shell">
         <div className="auth-symbol"><LockKeyhole size={26}/></div>
         <div className="auth-overline">{inviteToken ? 'SEU CONVITE DE ACESSO' : setup ? 'CONFIGURAÇÃO INICIAL' : 'BEM-VINDO DE VOLTA'}</div>
-        <h2>{inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : 'Acesse sua conta'}</h2>
-        <p className="auth-subtitle">{inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
+        <h2>{inviteToken ? 'Crie sua senha' : setup ? 'Ative o ST1 Connect' : forgot && recoveryAvailable ? 'Recupere seu acesso' : 'Acesse sua conta'}</h2>
+        <p className="auth-subtitle">{inviteToken ? 'Sua conta de Administrador foi reservada. Escolha uma senha forte para finalizar a ativação e entrar no painel.' : setup ? 'Crie a primeira conta de administrador usando o código de ativação configurado no Vercel.' : forgot && recoveryAvailable ? 'Defina uma nova senha sem precisar entrar na conta. Seu código administrativo é protegido no Vercel.' : 'Entre com seu e-mail e senha para acessar a central de serviços.'}</p>
         {forgot ? (recoveryAvailable && !setup && !inviteToken ?
           <form className="auth-form auth-recovery-form" onSubmit={submit}>
             <div className="auth-help auth-recovery-intro"><KeyRound size={23}/><h3>Recuperação segura do administrador</h3><p>Use o e-mail do administrador inicial e o código administrativo do Vercel. Este acesso só está disponível na prévia de testes e não exige sua senha antiga.</p></div>
