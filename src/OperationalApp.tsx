@@ -240,7 +240,7 @@ export default function OperationalApp({ user, onLogout }: { user: Account; onLo
       <div className="sidebar-bottom">
         <button type="button" className="sidebar-profile" onClick={() => setProfileOpen(true)} aria-label="Abrir meu perfil e configurações de acesso" title="Meu acesso">
           <span className="avatar profile-avatar">{user.name.slice(0, 2).toUpperCase()}</span>
-          <span><b>{user.name}</b><small>{user.role}</small></span>
+          <span><b>{user.name}</b><small>{user.isMaster ? 'Admin Master' : user.role}</small></span>
           <Settings2 size={17}/>
         </button>
       </div>
