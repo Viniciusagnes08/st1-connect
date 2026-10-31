@@ -77,6 +77,11 @@ test('somente o Admin Master pode criar, alterar e recuperar contas administrati
       password: 'FixtureTech123456', role: 'Técnico',
     }});
     assert.equal(techCreated.statusCode, 201);
+    const protectedAdmin = await call('users', { cookie: masterCookie, body: {
+      name: 'Second Administrator', email: 'protected@example.invalid',
+      password: 'FixtureProtected12345', role: 'Administrador',
+    }});
+    assert.equal(protectedAdmin.statusCode, 201);
 
     const adminLoggedIn = await call('login', {
       body: { email: 'delegate@example.invalid', password: 'FixtureDelegate12345' },
@@ -91,7 +96,7 @@ test('somente o Admin Master pode criar, alterar e recuperar contas administrati
       ['disable Master', 'user-update', { id: activated.body.user.id, role: 'Administrador', active: false }],
       ['demote Master', 'user-update', { id: activated.body.user.id, role: 'Técnico', active: true }],
       ['reset Master password', 'user-update', { id: activated.body.user.id, role: 'Administrador', active: true, password: 'ForbiddenReset123456' }],
-      ['change administrator role', 'user-update', { id: adminCreated.body.user.id, role: 'Técnico', active: true }],
+      ['change administrator role', 'user-update', { id: protectedAdmin.body.user.id, role: 'Técnico', active: true }],
     ];
     const auditBefore = directory.auditTrail.length;
     for (const [label, action, body] of forbidden) {
@@ -99,6 +104,10 @@ test('somente o Admin Master pode criar, alterar e recuperar contas administrati
       assert.equal(result.statusCode, 403, label);
     }
     assert.equal(directory.auditTrail.length, auditBefore, 'Tentativas negadas nao alteram auditoria');
+    const selfDemotionDelegated = await call('user-update', { cookie: delegatedCookie, body: {
+      id: adminCreated.body.user.id, role: 'Técnico', active: true,
+    }});
+    assert.equal(selfDemotionDelegated.statusCode, 400);
     assert.equal(directory.users.find(u => u.id === activated.body.user.id).active, true);
     assert.equal(directory.users.find(u => u.id === activated.body.user.id).role, 'Administrador');
 
