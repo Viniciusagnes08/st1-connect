@@ -13,9 +13,11 @@ export default async function handler(req, res) {
       if (req.query?.mode==='self') {
         const membership=await findMembership(db,user.id);
         return res.status(200).json({
-          membership:membership?.active ? {biRole:membership.bi_role,active:true} : null,
+          membership:membership?.active ? {biRole:membership.bi_role,active:true} :
+            user.isMaster ? {biRole:'manager',active:true} : null,
+          isMaster:user.isMaster===true,
           canManageMembers:user.role==='Administrador',
-          isBiStaff:Boolean(membership?.active && ['Administrador','Supervisor','Técnico'].includes(user.role)),
+          isBiStaff:Boolean(user.isMaster || (membership?.active && ['Administrador','Supervisor','Técnico'].includes(user.role))),
         });
       }
       if (user.role!=='Administrador')
