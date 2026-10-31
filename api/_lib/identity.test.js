@@ -14,7 +14,7 @@ const fetchDirectory=async () => ({ok:true,json:async()=>({users:[person]})});
 test('API lê identidade do cookie assinado, não do body', async () => {
   const req={headers:{cookie:cookie()},body:{id:'outro',role:'Administrador'}};
   assert.deepEqual(await currentPrincipal(req,env,fetchDirectory),{
-    id:'a1',name:'Pessoa',email:'pessoa@example.invalid',role:'Solicitante',active:true,
+    id:'a1',name:'Pessoa',email:'pessoa@example.invalid',role:'Solicitante',active:true,isMaster:false,
   });
 });
 test('sem sessão retorna 401, sem configuração retorna 503', async () => {
