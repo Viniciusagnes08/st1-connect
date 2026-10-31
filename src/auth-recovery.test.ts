@@ -10,7 +10,9 @@ const backend=readFileSync('api/auth.js','utf8');
 test('recuperação só é apresentada quando o backend confirma a disponibilidade',()=>{
   assert.match(ui,/setRecoveryAvailable\(data\.adminRecoveryAvailable === true\)/);
   assert.match(ui,/forgot \? \(recoveryAvailable && !setup && !inviteToken/);
-  assert.match(ui,/request\(isRecovery \? 'recover-admin'/);
+  assert.match(ui,/request\(viaEmailLink \? 'recover-admin-link' : isRecovery \? 'recover-admin'/);
+  assert.match(ui,/emailRecoveryToken \? <form className="auth-form auth-recovery-form"/);
+  assert.match(ui,/window\.location\.hash\.startsWith\('#\/recover-link\?'\)/);
   assert.match(backend,/process\.env\.VERCEL_ENV === 'preview'/);
   assert.match(backend,/process\.env\.ST1_ADMIN_RECOVERY_ENABLED === 'true'/);
 });
