@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff, KeyRound, LockKeyhole, LogOut, Plus, ShieldCheck, UserRound, Users, Wifi, X } from 'lucide-react';
 import OperationalApp from './OperationalApp';
+import GoogleSignIn, { preventGoogleAutoSelect } from './GoogleSignIn';
 import './auth.css';
 
 export type Role = 'Administrador' | 'Supervisor' | 'Técnico' | 'Solicitante';
-export type Account = { id: string; name: string; email: string; role: Role; active: boolean; isMaster?: boolean };
+export type Account = { id: string; name: string; email: string; role: Role; active: boolean; isMaster?: boolean; authMethod?: 'password'|'google'; googlePending?: boolean };
 const roles: Role[] = ['Administrador', 'Supervisor', 'Técnico', 'Solicitante'];
 const roleHelp: Record<Role,string> = {
   Administrador: 'Acesso integral, configurações e gerenciamento de contas.',
@@ -27,6 +28,7 @@ export default function AuthGate() {
   const [loading, setLoading] = useState(true);
   const [configured, setConfigured] = useState(true);
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState<string|null>(null);
   const [user, setUser] = useState<Account | null>(null);
   const [error, setError] = useState('');
   const [inviteToken, setInviteToken] = useState(() => {
@@ -40,21 +42,22 @@ export default function AuthGate() {
     return new URLSearchParams(hash.split('?')[1] || '').get('token') || '';
   });
   useEffect(() => {
-    request('status').then(data => { setConfigured(data.configured); setUser(data.user); setRecoveryAvailable(data.adminRecoveryAvailable === true); }).catch(e => setError(e.message)).finally(() => setLoading(false));
+    request('status').then(data => { setConfigured(data.configured); setUser(data.user); setRecoveryAvailable(data.adminRecoveryAvailable === true); setGoogleClientId(typeof data.googleClientId === 'string' ? data.googleClientId : null); }).catch(e => setError(e.message)).finally(() => setLoading(false));
   }, []);
   const exit = async () => {
+    preventGoogleAutoSelect();
     try { await request('logout', {}); } catch { /* Expired server-side session still means local sign-out. */ }
     setUser(null); window.location.hash = '/overview';
   };
   if (loading) return <div className="auth-loading"><span className="auth-spinner" />Preparando acesso seguro...</div>;
   if (user) return <OperationalApp user={user} onLogout={exit} />;
-  return <LoginScreen setup={!configured && !inviteToken && !emailRecoveryToken} inviteToken={inviteToken} emailRecoveryToken={emailRecoveryToken} recoveryAvailable={recoveryAvailable} error={error} onLogin={u => {
+  return <LoginScreen setup={!configured && !inviteToken && !emailRecoveryToken} inviteToken={inviteToken} emailRecoveryToken={emailRecoveryToken} recoveryAvailable={recoveryAvailable} googleClientId={googleClientId} error={error} onLogin={u => {
     if (inviteToken || emailRecoveryToken) window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/bi');
     setInviteToken(''); setUser(u); setError('');
   }} />;
 }
 
-function LoginScreen({ setup, inviteToken, emailRecoveryToken, recoveryAvailable, error: initialError, onLogin }: { setup: boolean; inviteToken: string; emailRecoveryToken: string; recoveryAvailable: boolean; error: string; onLogin: (user: Account) => void }) {
+function LoginScreen({ setup, inviteToken, emailRecoveryToken, recoveryAvailable, googleClientId, error: initialError, onLogin }: { setup: boolean; inviteToken: string; emailRecoveryToken: string; recoveryAvailable: boolean; googleClientId: string|null; error: string; onLogin: (user: Account) => void }) {
   const [error, setError] = useState(initialError);
   const [busy, setBusy] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -128,6 +131,7 @@ function LoginScreen({ setup, inviteToken, emailRecoveryToken, recoveryAvailable
           {!setup && !inviteToken && <button type="button" className="auth-forgot" onClick={() => {setError('');setForgot(true);}}>Esqueci minha senha</button>}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Validando acesso...' : inviteToken ? 'Ativar minha conta' : setup ? 'Ativar administrador' : 'Entrar no ST1 Connect'}<ArrowRight size={18}/></button>
         </form>}
+        {!emailRecoveryToken && !forgot && !setup && !inviteToken && <GoogleSignIn clientId={googleClientId} onLogin={onLogin} onError={setError}/>}
         <div className="auth-footer"><ShieldCheck size={15}/> Acesso protegido e exclusivo para usuários autorizados.</div>
       </div>
       <div className="auth-bottom-link">ST1 CONNECT <span>·</span> CENTRAL INTERNA DE SERVIÇOS</div>
