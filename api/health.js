@@ -28,7 +28,9 @@ export default async function handler(req,res) {
   try {
     assertBiEnabled();
     const db=await connection();
-    await db.query('SELECT 1');
+    // Confirma schema privado, privilegio SELECT e policy RLS da role do backend.
+    // LIMIT 0 nao le nem expõe dados de usuarios.
+    await db.query('SELECT id FROM st1_bi.request_records LIMIT 0');
     return res.status(200).json({service:'bi-foundation',database:'ready'});
   } catch (error) {
     const diagnostic = process.env.VERCEL_ENV==='preview' && req.query?.diagnose==='1';
