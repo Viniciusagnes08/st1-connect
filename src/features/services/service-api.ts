@@ -9,7 +9,7 @@ export type ServiceForm = {
 export type ServiceRequest = {
   id:string;protocol:string;area:string;category:string;title:string;
   state:ServiceState;confidential:boolean;created_at:string;updated_at:string;
-  requester_email:string;requester_user_id:string;
+  requester_email:string;requester_user_id:string;assigned_to_user_id?:string|null;
 };
 export type ServiceDetail = {
   request: ServiceRequest & {description:string;assigned_to_user_id:string|null};
@@ -38,3 +38,12 @@ export const changeServiceState=(id:string,state:ServiceState,reason:string)=>
   request<{request:ServiceRequest}>('/api/service-requests',{
     method:'PATCH',body:JSON.stringify({id,state,reason}),
   });
+
+export type DepartmentMembership={user_id?:string;area:string;role:'gestor'|'supervisor'|'executor';active:boolean;updated_at?:string};
+export type DepartmentMember={id:string;name:string;role:string;active:boolean};
+export const fetchMyDepartments=async()=>request<{items:DepartmentMembership[];areas:string[]}>('/api/departments?action=mine');
+export const fetchDepartmentMembers=async()=>request<{items:DepartmentMembership[];users:DepartmentMember[]}>('/api/departments?action=members');
+export const setDepartmentMember=(input:{userId:string;area:string;role:DepartmentMembership['role'];active:boolean})=>
+ request<{membership:DepartmentMembership}>('/api/departments',{method:'POST',body:JSON.stringify(input)});
+export const fetchDepartmentQueue=(area:string)=>fetchServiceRequests(('department:'+area) as 'mine');
+export const assignDepartmentRequest=(id:string,assignedTo:string)=>request<{request:ServiceRequest}>('/api/service-requests',{method:'PATCH',body:JSON.stringify({action:'assign',id,assignedTo})});
