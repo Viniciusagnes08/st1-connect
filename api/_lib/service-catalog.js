@@ -1,5 +1,6 @@
 // Catálogo de formulários reais. Trata definições de fluxo, não dados fictícios.
 const serviceAreas = [
+  {value:'bi',label:'BI e relatórios'},
   {value:'comercial',label:'Comercial'},
   {value:'crm',label:'Sistemas e CRM'},
   {value:'ti',label:'Infraestrutura e TI'},
