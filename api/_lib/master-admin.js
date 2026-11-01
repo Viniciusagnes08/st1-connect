@@ -58,6 +58,8 @@ export function canUpdateAccount(actor, target, nextRole, nextActive, env = proc
   // O Master virtual nao pode ter seu perfil compartilhado reescrito (mesmo pelo Master).
   if (isPinnedPreviewGoogleIdentity(target, env)) return false;
   const targetIsMaster = isMasterIdentity(target, env);
+  // Nenhuma outra sessao Master pode sobrescrever a identidade do Master inicial.
+  if (targetIsMaster && actor.id !== target.id) return false;
   // Nunca permitir a remocao da identidade administrativa reservada.
   if (targetIsMaster && (nextRole !== 'Administrador' || nextActive !== true)) return false;
   // Administradores delegados nao controlam nenhuma conta administrativa.
