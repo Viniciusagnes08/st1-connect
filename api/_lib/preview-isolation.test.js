@@ -105,7 +105,7 @@ test('identidade e leitura de diretorio usam exclusivamente o novo Blob e nova c
  let reads=0;
  const fetcher=async(url,options)=>{
   reads++;
-  assert.equal(new URL(url).hostname,expectedHost);
+  assert.equal(new URL(url).hostname,expectedHost.toLowerCase());
   assert.equal(options.headers.Authorization,'Bearer '+isolated.ST1_PREVIEW_BLOB_READ_WRITE_TOKEN);
   return new Response(JSON.stringify({users:[user]}),{status:200});
  };
