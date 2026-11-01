@@ -1,5 +1,5 @@
 import { decodeSession } from './auth-session.js';
-import { isMasterAdmin } from './master-admin.js';
+import { isMasterAdmin, effectiveAccessAccount } from './master-admin.js';
 
 const ROLES = new Set(['Administrador','Supervisor','Técnico','Solicitante']);
 
@@ -35,7 +35,7 @@ export async function loadDirectory(env = process.env, fetcher = fetch) {
 
 export async function currentPrincipal(req, env = process.env, fetcher = fetch) {
   const users=await loadDirectory(env, fetcher);
-  const person=decodeSession(req.headers?.cookie,env.ST1_AUTH_SECRET,users);
+  const person=decodeSession(req.headers?.cookie,env.ST1_AUTH_SECRET,users,Date.now(),env);
   if (!person || !ROLES.has(person.role)) {
     const error=new Error('Sessão inválida ou expirada. Entre novamente.');
     error.status=401;
@@ -44,8 +44,9 @@ export async function currentPrincipal(req, env = process.env, fetcher = fetch) 
   return {id:person.id,name:person.name,email:person.email,role:person.role,active:true,isMaster:isMasterAdmin(person,env)};
 }
 
-export function publicDirectory(users) {
-  return users.map(user => ({
-    id:user.id,name:user.name,email:user.email,role:user.role,active:user.active===true,
-  }));
+export function publicDirectory(users, env = process.env) {
+  return users.map(user => {
+    const effective=effectiveAccessAccount(user,env);
+    return {id:user.id,name:user.name,email:user.email,role:effective.role,active:user.active===true};
+  });
 }
