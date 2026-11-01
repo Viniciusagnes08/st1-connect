@@ -1,5 +1,6 @@
 import { decodeSession } from './auth-session.js';
 import { isMasterAdmin, effectiveAccessAccount } from './master-admin.js';
+import {previewAuthConfig} from './preview-isolation.js';
 
 const ROLES = new Set(['Administrador','Supervisor','Técnico','Solicitante']);
 
@@ -10,15 +11,16 @@ function unavailable(message) {
 }
 
 export async function loadDirectory(env = process.env, fetcher = fetch) {
-  if (!env.ST1_AUTH_SECRET || !env.BLOB_READ_WRITE_TOKEN ||
-      !/^[a-zA-Z0-9_-]{8,80}$/.test(env.ST1_BLOB_STORE_ID || ''))
+  const config=previewAuthConfig(env);
+  if (!config.secret || !config.blobToken ||
+      !/^[a-zA-Z0-9_-]{8,80}$/.test(config.blobStoreId || ''))
     throw unavailable('Autenticação não configurada.');
-  const url='https://'+env.ST1_BLOB_STORE_ID+
+  const url='https://'+config.blobStoreId+
     '.private.blob.vercel-storage.com/st1-connect/contas-v1.json?cache=0';
   let response;
   try {
     response = await fetcher(url, {
-      headers: { Authorization: 'Bearer ' + env.BLOB_READ_WRITE_TOKEN },
+      headers: { Authorization: 'Bearer ' + config.blobToken },
       cache: 'no-store',
       signal: AbortSignal.timeout(7000),
     });
@@ -35,7 +37,7 @@ export async function loadDirectory(env = process.env, fetcher = fetch) {
 
 export async function currentPrincipal(req, env = process.env, fetcher = fetch) {
   const users=await loadDirectory(env, fetcher);
-  const person=decodeSession(req.headers?.cookie,env.ST1_AUTH_SECRET,users,Date.now(),env);
+  const person=decodeSession(req.headers?.cookie,previewAuthConfig(env).secret,users,Date.now(),env);
   if (!person || !ROLES.has(person.role)) {
     const error=new Error('Sessão inválida ou expirada. Entre novamente.');
     error.status=401;
