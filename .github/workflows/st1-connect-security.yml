@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - feature/st1-connect-bi-foundation
-      - fix/st1-preview-google-master-qa-20261101
   pull_request:
     branches:
       - main
