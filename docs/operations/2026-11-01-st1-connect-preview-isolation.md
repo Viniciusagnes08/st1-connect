@@ -7,7 +7,8 @@
 - Vercel `st1-connect`, projeto `prj_ncTHqiOIOPSESh2vuEcKKUBt5Jmi`, branch `feature/st1-connect-bi-foundation`.
 - GitHub `Viniciusagnes08/st1-connect`; `main` e Vercel Production não devem ser alteradas.
 - O Blob legado está disponível a Production, Preview e Development; o diretório `st1-connect/contas-v1.json` continua compartilhado até a migração.
-- Banco atual: Supabase `cxqoypwsqokkwcirugrg` (ST1 Connect), com dados e permissões não demonstrativos. Não gravar nele para testar a Preview.
+- Banco original: Supabase `cxqoypwsqokkwcirugrg` (ST1 Connect), com dados reais; não gravar nele em testes de Preview.
+- Banco novo de homologação: Supabase `qnyjndtccseqcktqfije`, região `sa-east-1`, criado em 01/11/2026 na organização previamente aprovada; cotação da criação: **0 por mês**. Contém somente esquemas/tabelas vazios e roles sem login.
 - Blob privado **novo** `st1-connect-preview-isolated`: região `gru1`, `store_hVzSogKch4EgtVZE`, vazio e ainda não conectado a um projeto.
 - Vercel Preview: `ST1_PREVIEW_WRITE_GUARD=true` e `ST1_PREVIEW_BLOB_STORE_ID` cadastrados **somente** para a branch de homologação.
 - `ST1_PREVIEW_ISOLATION_ENABLED` permanece ausente/inativo enquanto não houver ambas as fontes independentes e teste de autenticação.
@@ -45,16 +46,28 @@ Vercel Blob: ao conectar o armazenamento ao projeto, selecionar **somente Previe
 - [x] Criar Blob privado independente (vazio)
 - [x] Registrar ID e guarda de escrita exclusivos na branch
 - [x] Desenvolver código de fail-closed + testes automatizados
-- [ ] Confirmar organização Supabase de destino e eventual custo explícito
-- [ ] Criar projeto Supabase novo em `sa-east-1`, sem copiar tabelas com dados ou registros reais
-- [ ] Instalar esquemas e migrações em banco novo; provisionar role `st1_connect_runtime` com permissões mínimas
-- [ ] Executar RLS/advisors e validar tabelas e scripts, com contagens zero em solicitações, auditorias e memberships
+- [x] Confirmar organização Supabase de destino; custo adicional cotado: 0 por mês
+- [x] Criar projeto Supabase novo em `sa-east-1`, sem copiar tabelas com dados ou registros reais
+- [x] Instalar esquemas e migrações em banco novo; role `st1_connect_runtime` criada com permissões mínimas e **NOLOGIN** até provisionamento seguro de credencial
+- [x] Executar RLS/advisors e validar tabelas e scripts, com contagens zero em solicitações, auditorias e memberships
 - [ ] Ligar novo Blob privado com token restrito à branch Preview, independente de Production
 - [ ] Provisionar chave Preview e conexão Postgres privadas, validar envs sem exibir seus valores
 - [ ] Preparar login Google Master no diretório novo SEM copiar usuário, senha nem identidade privada da produção
 - [ ] Habilitar `ST1_PREVIEW_ISOLATION_ENABLED=true` somente após validar todos os gates
 - [ ] Novo deploy `READY`; Master Google, Gmail convidado, logout, isolamento de sessão, grupos, BI e Ouvidoria
 - [ ] Validar produção inalterada, ausência de mutações em diretório e DB legados
+
+## Evidências do Supabase recém-criado
+
+- Projeto: `qnyjndtccseqcktqfije`, `ACTIVE_HEALTHY`.
+- Migrações registradas: `st1_preview_bi_core_20261101`, `st1_preview_runtime_roles_20261101`, `st1_preview_services_core_20261101`, `st1_preview_department_memberships_20261101`, `st1_preview_department_audit_20261101`.
+- 12 tabelas: 7 em `st1_bi` (incluindo `schema_migrations`) e 5 em `st1_services`. 11 tabelas operacionais com RLS habilitado; as cinco tabelas operacionais `st1_services` também possuem `FORCE ROW LEVEL SECURITY`.
+- Nenhuma tabela ou esquema da aplicação concede acesso direto a `anon`/`authenticated`; sem `USAGE` público nos dois esquemas privados.
+- Contagens verificadas: zero solicitações BI/Serviços, zero vínculos BI/departamentos e zero eventos de auditoria de domínio. Nenhum registro de produção foi copiado.
+- Security Advisors do Supabase: zero avisos no momento da validação.
+- `st1_connect_preview` e `st1_connect_runtime`: roles `NOLOGIN` e `NOBYPASSRLS`; a permissão da runtime vem da role de backend limitada.
+- Vercel `ST1_PREVIEW_SUPABASE_PROJECT_REF` configurado somente na Preview da branch. **Ainda não** existem credenciais runtime/Blob exclusivo e `ST1_PREVIEW_ISOLATION_ENABLED` continua desligado.
+- O armazenamento privado criado anteriormente continua vazio e sem conexão ao projeto Vercel. `ST1_PREVIEW_WRITE_GUARD=true` deve permanecer ligado.
 
 ## Migração e continuidade do Master
 
