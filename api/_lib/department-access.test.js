@@ -1,0 +1,21 @@
+import { test } from 'node:test';import assert from 'node:assert/strict';
+import {canSeeDepartmentRequest,canManageDepartment,canAssignDepartment} from './department-access.js';
+const p={id:'a',isMaster:false},m={user_id:'a',area:'crm',department_role:'gestor',active:true};
+const r={requester_user_id:'other',assigned_to_user_id:'b',area:'crm',confidential:false};
+test('department policy isolates areas and protects confidential content',()=>{
+ assert.equal(canSeeDepartmentRequest(p,r,m),true);
+ assert.equal(canManageDepartment(p,r,m),true);
+ assert.equal(canAssignDepartment(p,r,m),true);
+ assert.equal(canSeeDepartmentRequest(p,{...r,area:'ti'},m),false);
+ assert.equal(canSeeDepartmentRequest(p,{...r,confidential:true},m),false);
+ assert.equal(canSeeDepartmentRequest({id:'other'},r,null),true);
+ assert.equal(canSeeDepartmentRequest({...p,isMaster:true},r,null),true);
+ assert.equal(canAssignDepartment({...p,isMaster:true},{...r,area:'ouvidoria'},null),false);
+ const executor={...m,department_role:'executor'};
+ assert.equal(canSeeDepartmentRequest(p,r,executor),false);
+ assert.equal(canManageDepartment(p,r,executor),false);
+ assert.equal(canAssignDepartment(p,r,executor),false);
+ assert.equal(canSeeDepartmentRequest(p,{...r,assigned_to_user_id:'a'},executor),true);
+ assert.equal(canManageDepartment(p,{...r,assigned_to_user_id:'a'},executor),true);
+ assert.equal(canSeeDepartmentRequest(p,r,{...m,active:false}),false);
+});

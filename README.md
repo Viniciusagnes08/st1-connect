@@ -1,5 +1,8 @@
 # ST1 Connect
 
+> **Atualização de 31/10/2026 — Fase 00 (somente Preview da branch BI):** a experiência autenticada passou a abrir o `src/OperationalApp.tsx`, um portal **corporativo multiárea**, com Visão geral e Minhas solicitações consultadas de `GET /api/requests`, Central BI real, catálogo de módulos futuros claramente não habilitados e exportação dos dados locais anteriores. **Nenhum exemplo é exibido como dado operacional.** O `src/App.tsx` e o `src/domain.ts` descritos no histórico abaixo permanecem no repositório para compatibilidade/auditoria; não compõem a entrada autenticada ativa. O funcionamento multiusuário dos demais módulos ainda depende de implementações próprias. Não houve merge em `main` nem alteração de produção. Veja `docs/superpowers/specs/2026-10-31-st1-connect-multiarea-phase-00-design.md` e `docs/superpowers/plans/2026-10-31-st1-connect-multiarea-phase-00.md`.
+
+
 Central de serviços da ST1, com interface em português e fluxos inspirados em práticas de helpdesk e gestão de serviços utilizadas pelo GLPI. Implementação independente, feita com React, TypeScript e Vite.
 
 ## O que está implementado

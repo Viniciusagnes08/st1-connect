@@ -1,0 +1,33 @@
+name: Validate ST1 Connect
+
+on:
+  push:
+    branches:
+      - feature/st1-connect-bi-foundation
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Fetch code
+        uses: actions/checkout@v4
+      - name: Prepare Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Run unit and contract tests
+        run: npm test
+      - name: Verify TypeScript and Vite
+        run: npm run build

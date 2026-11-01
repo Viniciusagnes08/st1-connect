@@ -1,0 +1,61 @@
+/* Google Identity: neutro e alinhado ao login ST1 existente. */
+.auth-google {
+  margin-top: 16px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+.auth-google-separator {
+  display:flex;
+  align-items:center;
+  width:100%;
+  gap:12px;
+  color:#788498;
+  font-size:11px;
+  font-weight:600;
+}
+.auth-google-separator span {height:1px;flex:1;background:#e5eaf1}
+.auth-google-button {
+  min-height:44px;
+  max-width:100%;
+  width:300px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.auth-google small {
+  color:#67768b;
+  text-align:center;
+  line-height:1.5;
+  max-width:335px;
+  font-size:10px;
+}
+.auth-google small[role="alert"] {color:#b64036}
+.auth-google-awaiting {
+  margin-top:14px;
+  padding:13px 15px;
+  border:1px dashed #d6dfe9;
+  background:#f9fafb;
+  border-radius:8px;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  font-size:11px;
+}
+.auth-google-awaiting b {color:#253247}
+.auth-google-awaiting small {color:#69788c;line-height:1.4}
+.auth-google-invite {
+  margin:12px 0;
+  border:1px solid #e3eaf2;
+  padding:13px 15px;
+  border-radius:9px;
+  background:#f9fafc;
+}
+.auth-google-invite h4 {margin:0 0 5px;color:#203147;font-size:13px}
+.auth-google-invite p {margin:0 0 10px;font-size:11px;color:#61758c}
+.auth-google-invite button {display:flex;align-items:center;gap:6px}
+.auth-provider-note {
+  font-size:12px;line-height:1.6;color:#526578;
+  padding:16px;border:1px solid #e2e9f0;background:#f8fafc;border-radius:10px;
+}

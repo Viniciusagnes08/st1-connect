@@ -1,0 +1,132 @@
+# Supabase para ST1 Connect | Preparação segura da Fase A
+
+**Situação em 21/10/2026:** projeto Supabase **ST1 Connect** criado com cobrança confirmada de **US$ 0/mês**, na região `sa-east-1`. Projeto ID `cxqoypwsqokkwcirugrg` ([abrir no Supabase](https://supabase.com/dashboard/project/cxqoypwsqokkwcirugrg)), status `ACTIVE_HEALTHY`. Migração `st1_connect_bi_foundation_private_schema` aplicada. **Ainda não foi configurada `DATABASE_URL` no Vercel**.
+
+## Descoberta no Supabase (20/10/2026)
+
+A organização conectada continua no **plano Free**. O projeto **ST1 Connect** foi criado como segundo projeto ativo gratuito. O **ST1 Academy** continua ativo e o projeto genérico inativo permanece preservado; nenhum dos dois foi utilizado pelo Connect. O limite do Free Plan é de dois projetos ativos.
+
+A criação foi autorizada pelo usuário somente com custo zero. O Supabase retornou a cotação `{type:'project',recurrence:'monthly',amount:0}` antes da criação. A primeira leitura verificou seis tabelas vazias em `st1_bi` e nenhuma tabela operacional em `public`. A consulta de segurança confirmou `anon_schema_access=false`, `authenticated_schema_access=false` e nenhum GRANT direto a esses papéis. Em 21/10/2026, o índice da FK foi criado e o RLS foi habilitado após definir e testar a role exclusiva do backend. Os advisors de segurança retornaram sem lints.
+
+Fontes oficiais:
+- https://supabase.com/docs/guides/platform/billing-on-supabase
+- https://supabase.com/docs/guides/platform/free-project-pausing
+- https://supabase.com/docs/guides/database/connecting-to-postgres
+
+## Desenho do banco e segurança
+
+A aplicação **não usa Supabase Auth** nesta fase. Login, papel e sessão são conferidos pelo ST1 Connect no backend do Vercel. Portanto não há motivo para disponibilizar solicitações de BI na API pública do Supabase ou criar políticas simplistas de RLS para `authenticated`.
+
+O arquivo `db/migrations/001_core.sql` cria apenas tabelas internas no schema **`st1_bi`**:
+- `st1_bi.request_records`
+- `st1_bi.bi_memberships`
+- `st1_bi.bi_tickets`
+- `st1_bi.request_events`
+- `st1_bi.submission_keys`
+- `st1_bi.audit_log`
+- `st1_bi.request_protocol_seq`
+
+O `st1_bi` não pertence aos schemas expostos na Data API do Supabase e tem `USAGE` revogado de `PUBLIC`. As APIs no Vercel acessam essas tabelas com consultas SQL explicitamente qualificadas, aplicando autorização por usuário + membership do BI antes de consultar os registros.
+
+**Não cadastrar este schema nas configurações de exposição do Supabase REST/GraphQL.** Não colocar service-role key, token do Supabase, string de conexão ou senha em `VITE_*`, no bundle React ou no GitHub.
+
+## Escolha das conexões
+
+- **Migração administrativa:** conexão protegida de banco com permissão DDL, executada uma vez por ambiente; ou `Supabase apply_migration` dentro de projeto reservado para o Connect.
+- **API serverless Vercel:** **Transaction pooler** Supabase (Supavisor), porta 6543, `prepare:false` no driver `postgres`. O pooler é adequado a funções curtas e pode ser alcançado via IPv4.
+- **Preferível em produção:** um papel SQL exclusivo de execução do Connect com `USAGE` apenas no schema e `SELECT, INSERT, UPDATE` somente nas tabelas da aplicação e `USAGE` nas sequências necessárias. Credenciais desse papel não devem ser as do administrador do banco.
+- `DATABASE_URL` é uma variável **server-side** exclusiva do Vercel, não um endereço público. Testar conexão TLS e `SELECT 1` depois de configurar.
+- O driver valida o certificado com `rejectUnauthorized:true`. Se necessário, fornecer a CA pública via `DATABASE_SSL_CA`; não usar `ssl:'require'`, que no Postgres.js utilizado desativa a validação do certificado.
+
+A role `st1_connect_preview` já está criada, sem login nem senha. Possui os privilégios de tabela e sequência necessários à API, sem DELETE, DDL ou BYPASSRLS. As seis tabelas têm RLS ativo e políticas restritas a essa role. O backend autentica e autoriza cada usuário antes das consultas. Essa proteção foi testada em transação, com rollback de todos os registros sintéticos. O login da role só deve ser habilitado ao configurar a conexão privada.
+
+Esquema de permissão esperado, a aplicar com nome real da role criada e aprovada:
+
+```sql
+-- Apenas referência: nome da role deve existir e senha deve ser configurada
+-- fora do repositório. Não execute se a role não tiver sido criada.
+GRANT USAGE ON SCHEMA st1_bi TO st1_bi_api;
+GRANT SELECT ON st1_bi.request_records, st1_bi.bi_memberships,
+  st1_bi.bi_tickets, st1_bi.request_events, st1_bi.submission_keys TO st1_bi_api;
+GRANT INSERT ON st1_bi.request_records, st1_bi.bi_tickets,
+  st1_bi.request_events, st1_bi.submission_keys,
+  st1_bi.bi_memberships, st1_bi.audit_log TO st1_bi_api;
+GRANT UPDATE ON st1_bi.request_records, st1_bi.bi_tickets,
+  st1_bi.bi_memberships TO st1_bi_api;
+GRANT USAGE, SELECT ON st1_bi.request_protocol_seq,
+  st1_bi.audit_log_id_seq TO st1_bi_api;
+```
+
+## Conexão Vercel Preview e homologação
+
+1. Criar projeto próprio **ST1 Connect**, na organização indicada pela pessoa responsável, confirmando que o custo exibido é zero.
+2. Nunca vincular o banco do ST1 Academy ao Connect. Projeto dedicado evita mistura de cadastros, chamados e rotinas da escola de treinamento.
+3. Inspecionar as tabelas existentes e a lista de migrations no novo projeto antes de aplicar qualquer DDL.
+4. Aplicar `db/migrations/001_core.sql` no projeto novo e verificar as seis tabelas sob `st1_bi`, a sequência e a ausência de schemas adicionais expostos. Se utilizar `apply_migration`, não misturar ferramentas de histórico de migration sem reconciliação.
+5. Rodar advisors de segurança/performance no Supabase e tratar alertas relevantes.
+6. Configurar **somente Preview**: `DATABASE_URL` pelo Vercel (segredo server-side) e `BI_CONNECT_ENABLED=true` após a migração. Nunca no branch principal antes da homologação.
+7. Exercitar duas contas: criar pedido, visualizar próprio, negar leitura cruzada, fila permitida só a membros do BI e duplicação bloqueada por Idempotency-Key.
+8. Inspecionar logs, orçamento, backups, recuperação e risco de pausa automática em plano gratuito antes da escolha de produção.
+
+O Supabase Free pode pausar projetos com baixa atividade. Por isso o Free é conveniente para **homologação**, mas antes do uso produtivo do Squad o responsável deve aceitar explicitamente esse risco ou avaliar outro plano.
+
+## Verificação realizada no projeto Supabase
+
+- **Schema aplicado:** `st1_bi`
+- **Tabelas:** `request_records`, `bi_memberships`, `bi_tickets`, `request_events`, `submission_keys`, `audit_log`
+- **Linhas iniciais:** 0 registros em solicitações, tickets e membros.
+- **Migração registrada no Supabase:** `20261021023801_st1_connect_bi_foundation_private_schema`
+- **RLS e role preparados:** migração `20261021035541_restrict_bi_backend_role`; as seis tabelas possuem políticas para `st1_connect_preview`. Escrita/leitura/atualização e bloqueio de DELETE, DDL e leitura de auditoria foram testados; `anon`/`authenticated` continuam sem USAGE.
+- **Preview preparada:** `BI_CONNECT_ENABLED=false` foi criada e relida somente na branch `feature/st1-connect-bi-foundation`.
+- **Próximo passo:** obter o endpoint real do pooler atribuído ao projeto no painel autenticado, criar a credencial da role restrita e configurar a `DATABASE_URL` privada na Vercel Preview. Testar o driver antes de habilitar a flag. Não inferir o host do pooler apenas pela região.
+- **Não reproduzir segredo em chat, documentação ou código.** Configurar a string diretamente na área protegida de variáveis do Vercel.
+
+### Observação sobre migrações
+
+A primeira migração foi executada pela integração Supabase e está registrada no histórico gerenciado dessa plataforma. O script local `db/migrate.mjs` mantém seu próprio registro em `st1_bi.schema_migrations`; **não executar a migração local sobre o mesmo projeto antes de reconciliar os dois históricos**, para evitar caminhos de gestão concorrentes.
+
+## Estado de conclusão
+
+A Fase A permanece na branch `feature/st1-connect-bi-foundation`. O **Supabase dedicado e a migração inicial já estão criados e verificados**, sem ligação ao ST1 Academy. Ainda falta conectar a credencial protegida ao Vercel Preview e realizar testes reais de dois usuários e de escrita/leitura entre dispositivos antes do merge.
+
+## Homologação da conexão (30/10/2026)
+
+- Banco Supabase **ST1 Connect** restaurado e verificado como `ACTIVE_HEALTHY`.
+- Schema privado `st1_bi`: seis tabelas, inicialmente sem solicitações ou usuários; `anon` e `authenticated` não possuem uso do schema.
+- Criada role de runtime `st1_connect_runtime`, membro da role limitada `st1_connect_preview`; sem privilégios administrativos de banco.
+- Configuradas no Vercel **somente na branch Preview** `feature/st1-connect-bi-foundation` as variáveis `DATABASE_URL` (sensitive, conexão Postgres direta) e `BI_CONNECT_ENABLED=true`.
+- **Importante:** endpoint direto do Supabase é IPv6 no plano gratuito. A conexão precisa ser testada nas Vercel Functions. Se a infraestrutura não alcançar IPv6, usar o **host exato** do Transaction Pooler mostrado no diálogo Connect do Supabase, porta 6543. A documentação oficial alerta para não inferir o host pelo nome da região.
+- Nenhuma variável de banco foi criada para produção. A liberação depende de teste real de `/api/health`, gravação e leitura com dois usuários autorizados.
+
+## Diagnóstico real do Vercel Preview (30/10/2026)
+
+- O Supabase **ST1 Connect** foi restaurado e está `ACTIVE_HEALTHY`; SQL confirmado com seis tabelas e nenhum registro operacional.
+- A role de aplicação `st1_connect_runtime` existe, tem LOGIN, não possui `BYPASSRLS`, e herda privilégios limitados de `st1_connect_preview`.
+- A branch Vercel Preview possui `DATABASE_URL` do tipo **sensitive** e `BI_CONNECT_ENABLED=true`; **produção não recebeu essas variáveis**.
+- Novo deployment Preview `0ce333dc537350226e45626687e4ba5f5b420286` retornou estado **READY**; porém a chamada real de `/api/health` respondeu `{"service":"bi-foundation","database":"unavailable"}`.
+- A URL atualmente configurada é conexão PostgreSQL **direta (IPv6)**; para Vercel Functions o Supabase recomenda **Transaction Pooler**, porta **6543**, configuração `prepare:false` e pool de tamanho **1** (já adaptados no código).
+- O host exato do Pooler precisa ser obtido em **Supabase Dashboard → ST1 Connect → Connect → Transaction pooler**. A documentação oficial adverte expressamente que **o host não pode ser inferido somente da região**.
+- A integração automática **não deve ser descrita como concluída** até que a variável privada `DATABASE_URL` seja atualizada com a string correta, o Preview seja reconstruído e `/api/health` retorne `database:ready`.
+- Credenciais **não podem ser copiadas para GitHub, screenshots, chat ou campos VITE_**. Para completar manualmente: no Supabase, obtenha o host exato no Connect; no Vercel, Settings → Environment Variables → DATABASE_URL (Preview, branch BI), substitua a string usando a credencial mantida em meio seguro. Se a senha da role de aplicação não estiver disponível, configure/rotacione-a por meios privados autorizados, atualizando ambos os lados **sem divulgar senha nesta conversa**.
+- Após conectar: validar dois logins, idempotência de POST, leitura de chamados de outros usuários com 404, membership BI e rollback. Somente depois considerar PR #1 apto ao merge.
+- Fonte: https://supabase.com/docs/guides/database/connecting-to-postgres
+
+
+## Tentativa controlada de conexao via Pooler IPv4 (31/10/2026)
+
+- O Supabase continua `ACTIVE_HEALTHY`; a API Preview usava credencial privada da role `st1_connect_runtime` em URL direta IPv6.
+- O driver backend em `api/_lib/db.js` agora reescreve exclusivamente no runtime Node da branch de Preview a URL direta esperada para a forma `st1_connect_runtime.<project-ref>` com porta 6543; a senha permanece intocada na `DATABASE_URL` sensível do Vercel.
+- O host é fornecido em `ST1_DB_POOLER_HOST` da branch `feature/st1-connect-bi-foundation`, inicialmente com um **candidato não verificado** (`aws-1-sa-east-1.pooler.supabase.com`). Não presumir que o índice da região seja sempre o correto.
+- Há testes unitários de validação de host, nome do banco, role e impedimento de reescrita em Production. A opção `prepare:false` e pool de 1 conexão permanecem ativas.
+- **Gate:** verificar que uma implantação feita após definir a variável retorna `{"service":"bi-foundation","database":"ready"}`. Em caso de erro, não liberar produção nem assumir que o host foi validado.
+- A origem canônica do host é o diálogo Connect do Supabase, em `https://supabase.com/dashboard/project/cxqoypwsqokkwcirugrg?showConnect=true`; a UI pode ter variações.
+- Referências: https://supabase.com/docs/guides/database/connecting-to-postgres e https://supabase.com/kb/troubleshooting/tenant-or-user-not-found.
+
+
+## Cadeia TLS do Pooler (31/10/2026)
+
+- A API Preview com `ST1_DB_POOLER_HOST` ativo retornou `database:unavailable`, e o diagnostico temporario limitado a Preview revelou `SELF_SIGNED_CERT_IN_CHAIN` ao validar TLS.
+- A CA publica **Supabase Root 2021 CA** foi obtida do link oficial "Download certificate" nas configuracoes do banco: https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt
+- A CA foi adicionada em `DATABASE_SSL_CA` **somente no Preview da branch de BI**; o driver existente ja exige `ssl.rejectUnauthorized=true` e passa a CA ao Node. Nao usar `rejectUnauthorized:false`.
+- Um novo deploy gerado apos adicionar a variavel deve validar `GET /api/health?diagnose=1`. Se a categoria mudar para `POOLER_TENANT`, revisar indice do host no Connect do projeto, sem reconfigurar senha; se `AUTHENTICATION`, conferir role e credencial restrita.
+- Durante a homologacao, `?diagnose=1` so funciona com `VERCEL_ENV=preview` e retorna categorias nao sigilosas. Retirar esse diagnostico antes de publicar producao.

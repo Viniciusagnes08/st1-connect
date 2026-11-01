@@ -12,6 +12,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-20-formularios-inteligentes-design.md`
 
+
+> **Atualização de infraestrutura (21/10/2026):** a implementação operacional da Fase A utiliza o schema PostgreSQL privado `st1_bi` para evitar exposição pela Data API do Supabase. Os snippets SQL abaixo são exemplos de planejamento; ao implementar as fases seguintes, todos os objetos de dados devem ser qualificados como `st1_bi.nome_da_tabela` e as novas migrations devem seguir o modelo de isolamento e segurança descrito em `docs/operations/supabase-st1-connect-setup.md`. Não criar tabelas operacionais no schema `public`.
 ---
 
 ## Decisões de desenho

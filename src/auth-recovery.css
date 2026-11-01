@@ -1,0 +1,57 @@
+/* Recuperação do administrador inicial — mantém a linguagem visual ST1. */
+.auth-recovery-form {
+  gap: clamp(11px, 1.8dvh, 16px);
+}
+.auth-recovery-form .auth-recovery-intro {
+  margin-bottom: 2px;
+  padding: clamp(13px, 2.5dvh, 19px);
+  border: 1px solid #e6e9f0;
+  background: #f6f8fa;
+}
+.auth-recovery-form .auth-recovery-intro svg { color: #f45b28; }
+.auth-recovery-form .auth-recovery-intro h3 {
+  font-family: 'Outfit Variable', sans-serif;
+  font-size: 17px;
+  line-height: 1.2;
+  margin: 8px 0 5px;
+}
+.auth-recovery-form .auth-recovery-intro p {
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 0;
+}
+.auth-recovery-visibility {
+  align-self: flex-end;
+  color: #bc4723;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-recovery-visibility:focus-visible,
+.auth-recovery-return:focus-visible {
+  outline: 3px solid #f45b28;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.auth-recovery-form .auth-recovery-caution {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #657081;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+}
+.auth-recovery-caution svg { color: #36a271; flex-shrink: 0; }
+.auth-recovery-form .auth-recovery-return {
+  margin: 2px auto 0;
+  padding: 6px 12px;
+}
+@media (max-height: 720px) {
+  .auth-recovery-form { gap: 10px; }
+  .auth-recovery-form .auth-recovery-intro { padding: 11px 13px; }
+  .auth-recovery-form .auth-recovery-intro h3 { margin-top: 5px; }
+  .auth-recovery-form .auth-recovery-intro p { font-size: 11px; }
+}
