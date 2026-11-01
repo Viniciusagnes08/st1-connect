@@ -55,11 +55,22 @@ export function previewDatabaseConfig(env=process.env) {
   return {ref,url:raw};
 }
 
+// A proteção é intrínseca a esta branch: remover uma env var não reabre o banco legado.
 export function assertPreviewWriteSafe(env=process.env) {
   if(!isTargetPreview(env)) return;
-  if(previewWriteGuardActive(env) && !isolationEnabled(env)) throw fail();
-  if(isolationEnabled(env)){
-    previewAuthConfig(env);
-    previewDatabaseConfig(env);
-  }
+  if(!isolationEnabled(env)) throw fail();
+  previewAuthConfig(env);
+  previewDatabaseConfig(env);
+}
+
+// Defesa em profundidade: connections ad hoc só podem executar consultas de leitura
+// durante a fase anterior ao cutover. Operações de escrita exigem inTransaction,
+// que por sua vez é interrompida por assertPreviewWriteSafe.
+export function assertPreviewSqlReadOnly(statement, env=process.env) {
+  if(!isTargetPreview(env) || isolationEnabled(env)) return;
+  if(typeof statement!=='string' ||
+     !/^\\s*SELECT\\b/i.test(statement) ||
+     /\\b(?:nextval|setval|pg_notify|lo_import|pg_advisory_(?:lock|xact_lock))\\s*\\(/i.test(statement) ||
+     /\\bFOR\\s+(?:UPDATE|NO\\s+KEY\\s+UPDATE|SHARE|KEY\\s+SHARE)\\b/i.test(statement))
+    throw fail();
 }
