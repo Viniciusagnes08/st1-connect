@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { effectiveAccessAccount } from './master-admin.js';
 
 export const SESSION_COOKIE = 'st1_connect_session';
 
@@ -12,7 +13,7 @@ function equal(a, b) {
   return first.length === second.length && timingSafeEqual(first, second);
 }
 
-export function decodeSession(cookieHeader, secret, users, now = Date.now()) {
+export function decodeSession(cookieHeader, secret, users, now = Date.now(), env = process.env) {
   if (!secret || !Array.isArray(users)) return null;
   const cookie = String(cookieHeader || '').split(';').map(s => s.trim())
     .find(s => s.startsWith(SESSION_COOKIE + '='));
@@ -25,11 +26,12 @@ export function decodeSession(cookieHeader, secret, users, now = Date.now()) {
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!Number.isSafeInteger(data.exp) || data.exp <= now / 1000 ||
       typeof data.uid !== 'string' || !Number.isSafeInteger(data.ver)) return null;
-    return users.find(user => user.id === data.uid && user.version === data.ver &&
+    const found = users.find(user => user.id === data.uid && user.version === data.ver &&
       user.active === true && (
         (typeof user.passwordHash === 'string' && user.passwordHash.length > 0) ||
         (user.googleAuthOnly === true && typeof user.googleSub === 'string' && /^[0-9]{8,40}$/.test(user.googleSub))
       )) || null;
+    return effectiveAccessAccount(found, env);
   } catch {
     return null;
   }
