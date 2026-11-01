@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
 import {isTargetPreview,isolationEnabled,previewAuthConfig,previewDatabaseConfig,
-  assertPreviewWriteSafe} from './preview-isolation.js';
+  assertPreviewWriteSafe,assertPreviewSqlReadOnly} from './preview-isolation.js';
 import {requireDatabaseUrl,inTransaction} from './db.js';
 import {loadDirectory,currentPrincipal} from './identity.js';
 import authHandler from '../auth.js';
@@ -161,4 +161,31 @@ test('HTTP real permite leitura e veda mutacoes Blob do Master legado durante tr
    if(value===undefined)delete process.env[key];else process.env[key]=value;
   }
  }
+});
+
+test('a Preview fecha escrita mesmo sem variavel de guard e rejeita SQL mutavel',()=>{
+  for(const unguarded of [
+    {...baseline,ST1_PREVIEW_WRITE_GUARD:undefined},
+    {...baseline,ST1_PREVIEW_WRITE_GUARD:'false'},
+  ]) {
+    refused(()=>assertPreviewWriteSafe(unguarded));
+    assert.doesNotThrow(()=>assertPreviewSqlReadOnly(
+      'SELECT id FROM st1_services.requests LIMIT 0',unguarded));
+    for(const statement of [
+      "INSERT INTO st1_services.requests(id) VALUES('fake')",
+      " UPDATE st1_services.requests SET state='Novo'",
+      "DELETE FROM st1_services.requests",
+      "WITH writes AS (DELETE FROM st1_services.requests RETURNING *) SELECT * FROM writes",
+      "SELECT nextval('st1_bi.request_protocol_seq')",
+      "SELECT pg_advisory_xact_lock(123)",
+      "SELECT id FROM st1_services.requests FOR UPDATE",
+      "SELECT 1; DROP SCHEMA st1_services CASCADE",
+    ]) {
+      refused(()=>assertPreviewSqlReadOnly(statement,unguarded));
+    }
+  }
+  assert.doesNotThrow(()=>assertPreviewSqlReadOnly(
+    'UPDATE st1_services.requests SET state=\'Novo\'',isolated));
+  assert.doesNotThrow(()=>assertPreviewSqlReadOnly(
+    'UPDATE st1_services.requests SET state=\'Novo\'',{...baseline,VERCEL_ENV:'production'}));
 });
