@@ -1,5 +1,5 @@
 // Apenas servidor. Nunca incluir esta biblioteca no bundle Vite.
-import {previewDatabaseConfig,assertPreviewWriteSafe} from './preview-isolation.js';
+import {previewDatabaseConfig,assertPreviewWriteSafe,assertPreviewSqlReadOnly} from './preview-isolation.js';
 let clientPromise;
 
 // Projeto de BI criado exclusivamente para o ST1 Connect (nunca ST1 Academy).
@@ -82,6 +82,7 @@ function adapter(sql) {
     query: async (statement, values = []) => {
       if (typeof statement !== 'string' || typeof values?.length !== 'number')
         throw new TypeError('SQL e parâmetros inválidos');
+      assertPreviewSqlReadOnly(statement);
       return result(await sql.unsafe(statement, Array.from(values)));
     },
   });
