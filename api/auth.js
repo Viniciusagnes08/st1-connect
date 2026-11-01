@@ -3,17 +3,18 @@ import { decodeSession } from './_lib/auth-session.js';
 import { isMasterAdmin, canCreateAccount, canUpdateAccount, effectiveAccessAccount } from './_lib/master-admin.js';
 import { verifyGoogleCredential, googleIdentityAllowed, googleReturningIdentityAllowed } from './_lib/google-oidc.js';
 import { createGoogleChallenge, readGoogleChallenge, clearGoogleChallengeCookie } from './_lib/google-challenge.js';
+import {previewAuthConfig, isolationEnabled, assertPreviewWriteSafe} from './_lib/preview-isolation.js';
 
 const STORE_FILE = 'st1-connect/contas-v1.json';
 const COOKIE = 'st1_connect_session';
 const INVITATION_MS = 7 * 24 * 60 * 60 * 1000;
 const ROLES = ['Administrador', 'Supervisor', 'Técnico', 'Solicitante'];
-const secret = () => process.env.ST1_AUTH_SECRET;
-const token = () => process.env.BLOB_READ_WRITE_TOKEN;
-const storeId = () => process.env.ST1_BLOB_STORE_ID;
+const secret = () => previewAuthConfig().secret;
+const token = () => previewAuthConfig().blobToken;
+const storeId = () => previewAuthConfig().blobStoreId;
 // Somente Preview. Requer codigo administrativo guardado no Vercel.
 function adminRecoveryEnabled() {
-  return process.env.VERCEL_ENV === 'preview' &&
+  return !isolationEnabled() && process.env.VERCEL_ENV === 'preview' &&
     process.env.ST1_ADMIN_RECOVERY_ENABLED === 'true' &&
     typeof process.env.ST1_SETUP_TOKEN === 'string' &&
     process.env.ST1_SETUP_TOKEN.length >= 24 &&
@@ -24,6 +25,7 @@ function adminRecoveryEnabled() {
 // Acesso emergencial via link enviado apenas ao e-mail do administrador inicial.
 // O backend guarda somente o hash do token; o token nunca fica em logs ou no banco.
 function emailRecoveryEnabled() {
+  if(isolationEnabled()) return false;
   const expectedHash = String(process.env.ST1_EMAIL_RECOVERY_HASH || '');
   const expiresAt = Number(process.env.ST1_EMAIL_RECOVERY_EXPIRES_AT);
   return process.env.VERCEL_ENV === 'preview' &&
@@ -82,6 +84,7 @@ async function load() {
   return { users: data.users, etag: response.headers.get('etag'), auditTrail: data.auditTrail || [] };
 }
 async function save(users, etag, auditTrail) {
+  assertPreviewWriteSafe();
   const params = new URLSearchParams({ pathname: STORE_FILE });
   const response = await fetch(`https://vercel.com/api/blob/?${params}`, {
     method: 'PUT',
@@ -138,7 +141,7 @@ function initialAdministrator() {
 function resolveLoginUser(users, enteredEmail) {
   const direct = users.find(user => user.email === enteredEmail);
   if (direct) return direct;
-  if (process.env.VERCEL_ENV !== 'preview') return null;
+  if (process.env.VERCEL_ENV !== 'preview' || isolationEnabled()) return null;
   const alias = String(process.env.ST1_BOOTSTRAP_LOGIN_ALIAS || '').trim().toLowerCase();
   const primary = String(process.env.ST1_BOOTSTRAP_EMAIL || '').trim().toLowerCase();
   if (!validEmail(alias) || !validEmail(primary) || alias === primary || enteredEmail !== alias) return null;
@@ -154,6 +157,7 @@ function makeUser(name, email, password, role) {
 }
 export default async function handler(req, res) {
   noCache(res);
+  try { previewAuthConfig(); } catch { return error(res,503,'Ambiente de homologação indisponível.'); }
   if (!secret() || !token() || !storeId() || !process.env.ST1_SETUP_TOKEN) return error(res, 503, 'Autenticação indisponível. Consulte o administrador.');
   const action = String(req.query.action || '');
   if (req.method !== 'GET' && req.method !== 'POST') return error(res, 405, 'Método não permitido.');
@@ -171,7 +175,7 @@ export default async function handler(req, res) {
   }
   try {
     let state = await load();
-    if (state.users.length === 0) {
+    if (state.users.length === 0 && !isolationEnabled()) {
       const bootstrap = initialAdministrator();
       if (bootstrap) {
         try {
@@ -186,7 +190,7 @@ export default async function handler(req, res) {
     const me = current(req, state.users);
     const b = typeof req.body === 'object' && req.body ? req.body : {};
     if (action === 'status' && req.method === 'GET') return res.json({
-      configured:state.users.length > 0,user:me ? identity(me) : null,
+      configured:state.users.length > 0 || isolationEnabled(),user:me ? identity(me) : null,
       adminRecoveryAvailable:adminRecoveryEnabled(),
       googleClientId:/^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(String(process.env.ST1_GOOGLE_CLIENT_ID||''))
         ? process.env.ST1_GOOGLE_CLIENT_ID : null,
@@ -199,6 +203,7 @@ export default async function handler(req, res) {
       return res.json({nonce:challenge.nonce,expiresIn:600});
     }
     if (action === 'setup' && req.method === 'POST') {
+      if (isolationEnabled()) return error(res,403,'Ativação inicial por senha desabilitada na homologação.');
       if (state.users.length || process.env.ST1_BOOTSTRAP_EMAIL) return error(res, 409, 'A primeira conta está reservada para ativação pelo e-mail corporativo.');
       if (!equal(b.setupToken, process.env.ST1_SETUP_TOKEN)) return error(res, 403, 'Código de ativação inválido.');
       if (!validName(b.name) || !validEmail(b.email) || !validPassword(b.password)) return error(res, 400, 'Informe nome, e-mail e senha de 12 a 128 caracteres, com letras e números.');
