@@ -1,4 +1,5 @@
 // Apenas servidor. Nunca incluir esta biblioteca no bundle Vite.
+import {previewDatabaseConfig,assertPreviewWriteSafe} from './preview-isolation.js';
 let clientPromise;
 
 // Projeto de BI criado exclusivamente para o ST1 Connect (nunca ST1 Academy).
@@ -7,6 +8,18 @@ const ST1_CONNECT_PROJECT_REF = 'cxqoypwsqokkwcirugrg';
 const DIRECT_HOST = `db.${ST1_CONNECT_PROJECT_REF}.supabase.co`;
 
 export function requireDatabaseUrl(env = process.env) {
+  const isolated=previewDatabaseConfig(env);
+  if(isolated){
+    const host=env.ST1_PREVIEW_DB_POOLER_HOST||env.ST1_DB_POOLER_HOST;
+    if(!host) return isolated.url;
+    if(!/^aws-[0-9]+-sa-east-1\.pooler\.supabase\.com$/.test(host))
+      throw new Error('Host do pooler de homologação inválido');
+    const url=new URL(isolated.url);
+    url.hostname=host;
+    url.port='6543';
+    url.username='st1_connect_runtime.'+isolated.ref;
+    return url.toString();
+  }
   const direct = env.DATABASE_URL;
   if (typeof direct !== 'string' || !/^postgres(ql)?:\/\//.test(direct))
     throw new Error('DATABASE_URL indisponível');
@@ -79,6 +92,7 @@ export async function connection() {
 }
 
 export async function inTransaction(fn) {
+  assertPreviewWriteSafe();
   const sql = await client();
   return sql.begin(async transaction => fn(adapter(transaction)));
 }
