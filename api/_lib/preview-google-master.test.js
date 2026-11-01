@@ -70,7 +70,6 @@ test('escopo fail-closed: outra conta, email, papel do token, ambiente ou branch
     [{...owner,googleSub:'incorrect'},env],
     [{...owner,googlePending:true},env],
     [{...owner,passwordHash:'salt:digest'},env],
-    [{...owner,active:false},env],
     [owner,{...env,VERCEL_ENV:'production'}],
     [owner,{...env,VERCEL_ENV:'development'}],
     [owner,{...env,VERCEL_GIT_COMMIT_REF:'main'}],
@@ -83,6 +82,11 @@ test('escopo fail-closed: outra conta, email, papel do token, ambiente ou branch
     assert.equal(isPinnedPreviewGoogleIdentity(person,environment),false);
     assert.equal(effectiveAccessAccount(person,environment).role,person.role);
   }
+  const disabled={...owner,active:false};
+  assert.equal(isPinnedPreviewGoogleIdentity(disabled,env),true,
+    'Manter a conta identificada e protegida mesmo desativada');
+  assert.equal(effectiveAccessAccount(disabled,env).role,'Solicitante');
+  assert.equal(isMasterAdmin(effectiveAccessAccount(disabled,env),env),false);
   assert.equal(isMasterAdmin(effectiveAccessAccount(owner,{...env,VERCEL_ENV:'production'}),
     {...env,VERCEL_ENV:'production'}),false);
 });
