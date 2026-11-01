@@ -68,7 +68,7 @@ export function assertPreviewWriteSafe(env=process.env) {
 // que por sua vez é interrompida por assertPreviewWriteSafe.
 export function assertPreviewSqlReadOnly(statement, env=process.env) {
   if(!isTargetPreview(env) || isolationEnabled(env)) return;
-  if(typeof statement!=='string' ||
+  if(typeof statement!=='string' || statement.includes(';') ||
      !/^\s*SELECT\b/i.test(statement) ||
      /\b(?:nextval|setval|pg_notify|lo_import|pg_advisory_(?:lock|xact_lock))\s*\(/i.test(statement) ||
      /\bFOR\s+(?:UPDATE|NO\s+KEY\s+UPDATE|SHARE|KEY\s+SHARE)\b/i.test(statement))
