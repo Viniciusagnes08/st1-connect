@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { decodeSession } from './_lib/auth-session.js';
-import { isMasterAdmin, canCreateAccount, canUpdateAccount } from './_lib/master-admin.js';
+import { isMasterAdmin, canCreateAccount, canUpdateAccount, effectiveAccessAccount } from './_lib/master-admin.js';
 import { verifyGoogleCredential, googleIdentityAllowed, googleReturningIdentityAllowed } from './_lib/google-oidc.js';
 import { createGoogleChallenge, readGoogleChallenge, clearGoogleChallengeCookie } from './_lib/google-challenge.js';
 
@@ -48,7 +48,13 @@ const check = (password, stored) => {
   const got = scryptSync(password, salt, 64);
   return equal(got.toString('hex'), digest);
 };
-const identity = user => ({ id: user.id, name: user.name, email: user.email, role: user.role, active: user.active, isMaster: isMasterAdmin(user), authMethod: user.googleAuthOnly === true ? 'google' : 'password', googlePending: user.googlePending === true });
+const identity = user => {
+  const effective = effectiveAccessAccount(user);
+  return { id: effective.id, name: effective.name, email: effective.email, role: effective.role,
+    active: effective.active, isMaster: isMasterAdmin(effective),
+    authMethod: effective.googleAuthOnly === true ? 'google' : 'password',
+    googlePending: effective.googlePending === true };
+};
 const error = (res, status, message) => res.status(status).json({ error: message });
 const noCache = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); };
 // A auditoria administrativa acompanha o diretorio privado na mesma escrita ETag.
