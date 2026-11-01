@@ -60,6 +60,10 @@ test('Master Google so existe para ID, email e Google sub autenticados na Previe
   assert.equal(isMasterIdentity(owner,env),true,'Identidade proprietaria permanece protegida');
   assert.equal(canUpdateAccount(effective,owner,'Administrador',true,env),false,
     'Master virtual nao pode regravar seu papel no diretorio compartilhado');
+  assert.equal(canUpdateAccount(effective,admin,'Administrador',true,env),false,
+    'Master Google nao pode alterar a conta do Master inicial');
+  assert.equal(canUpdateAccount(admin,admin,'Administrador',true,env),true,
+    'Master inicial preserva suas operacoes autorizadas');
 });
 
 test('escopo fail-closed: outra conta, email, papel do token, ambiente ou branch',()=>{
